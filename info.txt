@@ -40,7 +40,9 @@ in package.json of frontend do this
 { devdependencies   -> vite : ^5.4.1    -> change to  vite : 5.3.4  (so our console ninja will work)  
 }
 
+npm install -S @toolpad/core   (https://mui.com/toolpad/core/react-account/)
 
+npm install lucide-react
 
 ....................................................................................................................................................
 
