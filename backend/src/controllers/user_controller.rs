@@ -10,15 +10,21 @@ use axum::{
 use bcrypt::{hash, verify, DEFAULT_COST};
 use bson::Document;
 use chrono::{Duration, Utc};
+
 use jsonwebtoken::{encode, EncodingKey, Header};
 use mongodb::bson::{doc, oid::ObjectId, Bson, DateTime as BsonDateTime};
-// use mongodb::bson::{doc, oid::ObjectId, Bson};
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
 use validator::validate_email;
 
 use axum::http::{HeaderMap, HeaderValue};
-use cookie::{time::Duration as OtherDuration, Cookie};
+// use cookie::{time::Duration as OtherDuration, Cookie};
+use cookie::{Cookie, SameSite};
+
+use axum_extra::extract::cookie::CookieJar;
+use cookie::time::Duration as OtherDuration; // Use from axum_extra
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterUser {
@@ -60,6 +66,32 @@ pub struct UserResponse {
     pub usage: Usage,                        // User's usage data
 }
 
+// pub fn generate_token_and_set_cookie(user_id: ObjectId, jar: CookieJar) -> CookieJar {
+//     let claims = Claims {
+//         id: user_id.to_hex(), // Convert ObjectId to hex string
+//         exp: 172800,          // Token expiration in seconds (2 days in this example),
+//     };
+//         let jwt_secret = configration::gett::<String>("jwt_secret");
+
+//     let token = encode(
+//         &Header::default(),
+//         &claims,
+//         &EncodingKey::from_secret(jwt_secret.as_ref()),
+//     )
+//     .unwrap();
+
+//     // Build the cookie (like in Node.js example)
+//     let cookie = Cookie::build("token", token)
+//         .http_only(true) // Prevent XSS
+//         .secure(true) // Use secure flag for HTTPS
+//         .same_site(SameSite::Strict) // Prevent CSRF
+//         .max_age(OtherDuration::days(1)) // Expire in 1 day
+//         .path("/") // Set cookie for the entire domain
+//         .finish();
+
+//     // Add the cookie to the jar (this is equivalent to setting the cookie in the response)
+//     jar.add(cookie)
+// }
 pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
     let collection = User::get_user_collection().await;
     let jwt_secret = configration::gett::<String>("jwt_secret");
@@ -138,6 +170,9 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
         .expect("valid timestamp")
         .timestamp();
 
+    // // Generate token and set the cookie
+    // let jar = generate_token_and_set_cookie(user_id, jar);
+
     // Creating JWT token with the user_id in claims
     let claims = Claims {
         id: user_id.to_hex(), // Convert ObjectId to hex string
@@ -152,14 +187,10 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
     .unwrap();
 
     // // Set the token in a cookie
-    // let cookie = Cookie::build( token)
-    //     .path("/") // Cookie valid for all paths
-    //     .max_age(OtherDuration::days(1)) // Cookie expiration
-    //     .http_only(true); // JS cannot access the cookie
-
     let cookie: Cookie = Cookie::build(("token", token))
-        .domain("www.rust-lang.org")
+        // .domain("www.rust-lang.org")
         .path("/")
+        .same_site(SameSite::Strict) // Prevent CSRF
         .secure(true)
         .http_only(true)
         .max_age(OtherDuration::days(1))
@@ -254,7 +285,8 @@ pub async fn login_user(Json(payload): Json<LoginUser>) -> Response {
     .unwrap();
 
     let cookie: Cookie = Cookie::build(("token", token))
-        .domain("www.rust-lang.org")
+        // .domain("www.rust-lang.org")
+        .same_site(SameSite::Strict) // Prevent CSRF
         .path("/")
         .secure(true)
         .http_only(true)

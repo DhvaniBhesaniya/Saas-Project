@@ -7,7 +7,7 @@ import Divider from "@mui/material/Divider";
 import FormLabel from "@mui/material/FormLabel";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
-import Link from "@mui/material/Link";
+import { Link } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
@@ -42,7 +42,6 @@ export default function SignUnCard() {
   const [nameError, setNameError] = React.useState(false);
   const [nameErrorMessage, setNameErrorMessage] = React.useState("");
 
-
   const handleSubmit = (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -55,7 +54,7 @@ export default function SignUnCard() {
   const validateInputs = () => {
     const email = document.getElementById("email");
     const password = document.getElementById("password");
-    const name = document.getElementById('name');
+    const name = document.getElementById("name");
 
     let isValid = true;
 
@@ -164,13 +163,14 @@ export default function SignUnCard() {
           Sign up
         </Button>
         <Typography sx={{ textAlign: "center" }}>
-          Already have an account?{" "}
+          Already have an account ?
           <span>
             <Link
-              href="/material-ui/getting-started/templates/sign-in/"
+              to={`/login?mode=login`}
               variant="body2"
               sx={{ alignSelf: "center" }}
             >
+              {" "}
               Sign in
             </Link>
           </span>
@@ -193,6 +193,7 @@ export default function SignUnCard() {
           variant="outlined"
           onClick={() => alert("Sign in with Facebook")}
           startIcon={<FacebookIcon />}
+          disabled
         >
           Sign in with Facebook
         </Button>

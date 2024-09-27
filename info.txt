@@ -52,6 +52,9 @@ npm install -S @toolpad/core   (https://mui.com/toolpad/core/react-account/)
 
 npm install lucide-react
 
+npm i @tanstack/react-query
+npm install js-cookie
+
 ....................................................................................................................................................
 
 
