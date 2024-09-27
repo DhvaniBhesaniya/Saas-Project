@@ -1,0 +1,26 @@
+{
+  "env": "production",
+  "mongodb_url": "mongodb+srv://narutogokuluffy009:saas-app-009@zoro.1a4dm.mongodb.net/?retryWrites=true&w=majority&appName=Zoro",
+  "port": 4000,
+  "jwt_secret": "random#secret",
+  "stripe_secret_key": "sk_test_51PZ54HRtqMxXmkr4Q3MA0jg5H0k06yQJ5y9e1Ch1we6smsALhrKGNAH7X4kfhJohswoDwzlYar1hfvxtEJWGJKTX00XZdafYL2",
+  "local_frontend_url": "http://localhost:5173",
+  "deployed_frontend_url": "",
+  "CLOUDINARY_CLOUD_NAME": "djigcn0dy",
+  "CLOUDINARY_API_KEY": 427398293199567,
+  "CLOUDINARY_API_SECRET": "o5-D-OB489U352LTAi6BBxBhOSQ",
+  "logger": {
+    "exceptionLogFileName": "exceptions.log",
+    "httpErrorLogFileName": "httpError.log",
+    "httpLogFileName": "http.log",
+    "httpLogformat": "",
+    "logFileName": "logs.log",
+    "logFilePrefix": "",
+    "logFileSize": 17408,
+    "path": "./logs",
+    "all_logs_common_file_path": "logs/step/All-Logs.log",
+    "roller_base_start": 1,
+    "roller_max_count": 999,
+    "roller_filepath_pattern": "logs/LogsFiles/All-Logs_{}.log"
+  }
+}
