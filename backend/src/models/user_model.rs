@@ -15,6 +15,7 @@ pub struct User {
 
     pub name: String,              // User's name
     pub email: String,             // User's email
+    pub username: String,          // User's Username
     pub password: Option<String>,  // Hashed password for simple login
     pub google_id: Option<String>, // Google ID for Google login
     pub login_type: String,        // "google" or "email"
@@ -26,6 +27,8 @@ pub struct User {
     pub updated_at: DateTime<Utc>, // Last update timestamp
     #[serde(rename = "profileImg")]
     pub profile_img: Option<String>,
+    #[serde(rename = "AccDeleted")]
+    pub acc_deleted: bool,
 }
 
 // Define the subscription plan model

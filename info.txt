@@ -55,6 +55,17 @@ npm install lucide-react
 npm i @tanstack/react-query
 npm install js-cookie
 
+
+
+
+
+
+# free admin dashboards  
+
+https://mui.com/store/items/devias-kit/
+https://mui.com/store/items/mantis-free-react-admin-dashboard-template/
+https://mui.com/store/items/berry-react-material-admin-free/
+https://mui.com/store/items/minimal-dashboard-free/
 ....................................................................................................................................................
 
 

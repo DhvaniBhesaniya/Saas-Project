@@ -7,10 +7,10 @@ import Divider from "@mui/material/Divider";
 import FormLabel from "@mui/material/FormLabel";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-
+import toast from "react-hot-toast";
 import { styled } from "@mui/material/styles";
 
 import ForgotPassword from "./ForgotPassword";
@@ -47,6 +47,7 @@ export default function SignInCard() {
     email: "",
     password: "",
   });
+  const navigate = useNavigate();
 
   const handleClickOpen = () => {
     setOpen(true);
@@ -78,7 +79,9 @@ export default function SignInCard() {
     },
     onSuccess: (data) => {
       // Handle successful login
-      queryClient.refetchQueries({ queryKey: ["authUser"] });
+      toast.success("Login Successfuly");
+      queryClient.fetchQuery({ queryKey: ["authUser"] });
+      // navigate("/");
     },
     onError: (error) => {
       console.error("Error logging in:", error);

@@ -16,14 +16,21 @@ import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
-import InboxIcon from "@mui/icons-material/MoveToInbox";
-import MailIcon from "@mui/icons-material/Mail";
+// import InboxIcon from "@mui/icons-material/MoveToInbox";
+// import MailIcon from "@mui/icons-material/Mail";
 import AccountSlots from "./AccountSlots";
 import TranslationPlatform from "./TranslationPlatform";
 import { BsTranslate } from "react-icons/bs";
+import { CgProfile } from "react-icons/cg";
+import { CiSettings } from "react-icons/ci";
+import { FiHelpCircle } from "react-icons/fi";
 import CardAlert from "./CardAlert";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
-
+import UserProfile from "./UserProfile";
+import { useQuery } from "@tanstack/react-query";
+import { Avatar } from "@mui/material";
+import { useSearchParams } from "react-router-dom";
+import NotFound from "./NotfoundPage";
 
 const drawerWidth = 200;
 
@@ -96,9 +103,26 @@ const Drawer = styled(MuiDrawer, {
 export default function MiniDrawer() {
   const theme = useTheme();
   const [open, setOpen] = React.useState(false);
-  // const [currentProductName, setCurrentproductName] = React.useState("AI-Translator");
+  const { data: authUser } = useQuery({ queryKey: ["authUser"] });
   // Add state to store the selected product
   const [selectedProduct, setSelectedProduct] = React.useState("AI-Translator");
+  const [selectedSetting, setSelectedSetting] = React.useState("User");
+  const [currentSelect, setCurrentSelect] = React.useState("p"); // p or s
+
+  const [searchParams] = useSearchParams();
+  const page_type = searchParams.get("type");
+
+  // Perform actions based on the "mode"
+  React.useEffect(() => {
+    if (page_type === "s") {
+      // Handle signup mode logic
+      setCurrentSelect(page_type);
+      setSelectedSetting("User");
+    } else {
+      // Handle login mode logic
+      setCurrentSelect("p");
+    }
+  }, [page_type]);
 
   const handleDrawerOpen = () => {
     setOpen(true);
@@ -127,7 +151,9 @@ export default function MiniDrawer() {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div">
-            Product / {selectedProduct}
+            {currentSelect === "p"
+              ? `Product / ${selectedProduct}`
+              : `Setting / ${selectedSetting}`}
           </Typography>
         </Toolbar>
       </AppBar>
@@ -146,7 +172,7 @@ export default function MiniDrawer() {
         <Divider />
         {/* Update the ListItemButton to handle click events */}
         <List>
-          {["AI-Translator", "Product2", "Product3", "Product4"].map(
+          {["AI-Translator", "AI- Replace", "Product3", "Product4"].map(
             (text, index) => (
               <ListItem key={text} disablePadding sx={{ display: "block" }}>
                 <ListItemButton
@@ -155,7 +181,10 @@ export default function MiniDrawer() {
                     justifyContent: open ? "initial" : "center",
                     px: 2.5,
                   }}
-                  onClick={() => setSelectedProduct(text)} // Set the selected product on click
+                  onClick={() => {
+                    setSelectedProduct(text);
+                    setCurrentSelect("p");
+                  }} // Set the selected product on click
                 >
                   <ListItemIcon
                     sx={{
@@ -170,7 +199,7 @@ export default function MiniDrawer() {
                       alt={text}
                       style={{ width: "1.5rem", height: "1.5rem" }}
                     /> */}
-                    <BsTranslate />
+                    <BsTranslate style={{ fontSize: "1.3rem" }} />
                   </ListItemIcon>
                   <ListItemText primary={text} sx={{ opacity: open ? 1 : 0 }} />
                 </ListItemButton>
@@ -180,7 +209,7 @@ export default function MiniDrawer() {
         </List>
         <Divider />
         <List>
-          {["All mail", "Trash", "Spam"].map((text, index) => (
+          {["User", "Setting", "Help"].map((text, index) => (
             <ListItem key={text} disablePadding sx={{ display: "block" }}>
               <ListItemButton
                 sx={{
@@ -188,6 +217,10 @@ export default function MiniDrawer() {
                   justifyContent: open ? "initial" : "center",
                   px: 2.5,
                 }}
+                onClick={() => {
+                  setSelectedSetting(text);
+                  setCurrentSelect("s");
+                }} // Set the selected product on click
               >
                 <ListItemIcon
                   sx={{
@@ -196,7 +229,15 @@ export default function MiniDrawer() {
                     justifyContent: "center",
                   }}
                 >
-                  {index % 2 === 0 ? <InboxIcon /> : <MailIcon />}
+                  {index === 0 ? (
+                    <CgProfile style={{ fontSize: "1.3rem" }} />
+                  ) : index === 1 ? (
+                    <CiSettings style={{ fontSize: "1.3rem" }} />
+                  ) : (
+                    index === 2 && (
+                      <FiHelpCircle style={{ fontSize: "1.3rem" }} />
+                    )
+                  )}
                 </ListItemIcon>
                 <ListItemText primary={text} sx={{ opacity: open ? 1 : 0 }} />
               </ListItemButton>
@@ -235,6 +276,10 @@ export default function MiniDrawer() {
                 justifyContent: open ? "initial" : "center",
                 px: 2.5,
               }}
+              onClick={() => {
+                setCurrentSelect("s");
+                setSelectedSetting("User");
+              }}
             >
               <ListItemIcon
                 sx={{
@@ -243,7 +288,11 @@ export default function MiniDrawer() {
                   justifyContent: "center",
                 }}
               >
-                <AccountSlots />
+                {/* <AccountSlots /> */}
+                <Avatar
+                  alt="Remy Sharp"
+                  src={authUser?.profileImg || "/goku.jpg"}
+                />
               </ListItemIcon>
               <ListItemText primary="Profile" sx={{ opacity: open ? 1 : 0 }} />
             </ListItemButton>
@@ -255,10 +304,21 @@ export default function MiniDrawer() {
       <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
         <DrawerHeader />
         <Typography sx={{ marginBottom: 2 }}>
-          {selectedProduct === "AI-Translator" && <TranslationPlatform />}
-          {selectedProduct === "Product2" && "Content for Product 2"}
-          {selectedProduct === "Product3" && "Content for Product 3"}
-          {selectedProduct === "Product4" && "Content for Product 4"}
+          {currentSelect === "p" ? (
+            <>
+              {selectedProduct === "AI-Translator" && <TranslationPlatform />}
+              {selectedProduct === "AI- Replace" &&
+                "project  :  add your clear standing picture.then  side option to upload the pictures of clothes. then those  cloths will be added on your standing  image to see how it looks on you. , for everything for head ,  t-shirt  shirt ...., jeans..., shoes..."}
+              {selectedProduct === "Product3" && "Content for Product 3"}
+              {selectedProduct === "Product4" && "Content for Product 4"}
+            </>
+          ) : (
+            <>
+              {selectedSetting === "User" && <UserProfile />}
+              {selectedSetting === "Setting" && "Content for setting"}
+              {selectedSetting === "Help" && <NotFound />}
+            </>
+          )}
         </Typography>
       </Box>
     </Box>

@@ -1,38 +1,9 @@
-import * as React from 'react';
-import { Account, AuthenticationContext, SessionContext } from '@toolpad/core';
-import CustomMenu from './CustomMenu';
+import * as React from "react";
 
-
-const demoSession = {
-  user: {
-    name: 'Bharat Kashyap',
-    email: 'bharatkashyap@outlook.com',
-    image: 'https://avatars.githubusercontent.com/u/19550456',
-  },
-};
-
+import { useQuery } from "@tanstack/react-query";
+import { Avatar } from "@mui/material";
 export default function AccountSlots() {
-  const [session, setSession] = React.useState(demoSession);
-  const authentication = React.useMemo(() => {
-    return {
-      signIn: () => {
-        setSession(demoSession);
-      },
-      signOut: () => {
-        setSession(null);
-      },
-    };
-  }, []);
+  const { data: authUser } = useQuery({ queryKey: ["authUser"] });
 
-  return (
-    <AuthenticationContext.Provider value={authentication}>
-      <SessionContext.Provider value={session}>
-        <Account
-          slots={{
-            menuItems: CustomMenu,
-          }}
-        />
-      </SessionContext.Provider>
-    </AuthenticationContext.Provider>
-  );
+  return <Avatar alt="Remy Sharp" src={authUser.profileImg || "/goku.jpg"} />;
 }

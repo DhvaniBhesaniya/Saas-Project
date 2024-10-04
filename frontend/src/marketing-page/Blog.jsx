@@ -9,12 +9,15 @@ import Footer from './components/Footer';
 import TemplateFrame from './TemplateFrame';
 
 import getBlogTheme from './theme/getBlogTheme';
+import { useQuery } from '@tanstack/react-query';
 
 export default function Blog() {
   const [mode, setMode] = React.useState('light');
   const [showCustomTheme, setShowCustomTheme] = React.useState(true);
   const blogTheme = createTheme(getBlogTheme(mode));
   const defaultTheme = createTheme({ palette: { mode } });
+  const { data: authUser } = useQuery({ queryKey: ["authUser"] });
+
   // This code only runs on the client side, to determine the system color preference
   React.useEffect(() => {
     // Check if there is a preferred mode in localStorage

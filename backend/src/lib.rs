@@ -23,3 +23,31 @@
 
 //   Ok(())
 // }
+
+
+
+
+
+// https://stackoverflow.com/questions/73041173/is-it-possible-to-use-env-file-at-build-time
+// for dot.env   , https://crates.io/crates/dotenv_codegen
+
+
+
+
+
+
+
+// I'm not so sure this is well-established, but you can use a build script that will read the file and use println!("cargo:rustc-env=VAR=VALUE") to send the environment variables to Cargo, allowing you to retrieve them in the code with env!() or option_env!().
+
+// For example, to use a .env file, add dotenv to build-dependencies, and use it like so in build.rs:
+
+// fn main() {
+//     let dotenv_path = dotenv::dotenv().expect("failed to find .env file");
+//     println!("cargo:rerun-if-changed={}", dotenv_path.display());
+
+//     // Warning: `dotenv_iter()` is deprecated! Roll your own or use a maintained fork such as `dotenvy`.
+//     for env_var in dotenv::dotenv_iter().unwrap() {
+//         let (key, value) = env_var.unwrap();
+//         println!("cargo:rustc-env={key}={value}");
+//     }
+// }

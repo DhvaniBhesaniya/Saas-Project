@@ -26,11 +26,11 @@ export const loginUser = async (email, password) => {
 
     const responseData = await response.json();
 
-    // Assuming the token comes in the response and you want to save it in localStorage
-    const { token } = responseData;
-    if (token) {
-      Cookies.set("token", token, { expires: 1 });
-    }
+    // // Assuming the token comes in the response and you want to save it in localStorage
+    // const { token } = responseData;
+    // if (token) {
+    //   Cookies.set("token", token, { expires: 1 });
+    // }
 
     return responseData; // Return the response data for further use
   } catch (error) {
@@ -68,7 +68,7 @@ export const fetchAuthUser = async () => {
     const responseData = await response.json();
 
     if (!response.ok) {
-      throw new Error(responseData.error || "Failed to get user");
+      throw new Error(responseData.message || "Failed to get user..");
     }
 
     return responseData; // Return the user data

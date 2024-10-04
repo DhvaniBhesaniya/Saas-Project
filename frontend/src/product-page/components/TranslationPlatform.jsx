@@ -200,7 +200,7 @@ export default function TranslationPlatform() {
                 Translate
               </TranslateButton>
               <Typography variant="subtitle1">Translated Text</Typography>
-              <StyledTextArea minRows={4} value={translatedText} readOnly />
+              <StyledTextArea minRows={4} value={`${translatedText}`} readOnly />
             </CardContent>
           </StyledCard>
         )}

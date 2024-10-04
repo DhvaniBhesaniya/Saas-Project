@@ -1,5 +1,6 @@
 use crate::models::user_model::{SubscriptionPlan, Usage, User};
-use crate::{configration, middleware::auth::Claimss};
+use crate::utils::generate_token::{generate_token_and_set_cookie, generate_token_and_unset_cookie};
+use crate::middleware::auth::Claimss;
 use axum::response::Response;
 use axum::{
     extract::Form,
@@ -9,9 +10,9 @@ use axum::{
 };
 use bcrypt::{hash, verify, DEFAULT_COST};
 use bson::Document;
-use chrono::{Duration, Utc};
+// use chrono::{Duration, Utc};
 
-use jsonwebtoken::{encode, EncodingKey, Header};
+// use jsonwebtoken::{encode, EncodingKey, Header};
 use mongodb::bson::{doc, oid::ObjectId, Bson, DateTime as BsonDateTime};
 
 use serde::{Deserialize, Serialize};
@@ -19,12 +20,12 @@ use serde_json::json;
 
 use validator::validate_email;
 
-use axum::http::{HeaderMap, HeaderValue};
-// use cookie::{time::Duration as OtherDuration, Cookie};
-use cookie::{Cookie, SameSite};
+// use axum::http::{HeaderMap, HeaderValue};
+// // use cookie::{time::Duration as OtherDuration, Cookie};
+// use cookie::{Cookie, SameSite};
 
-use axum_extra::extract::cookie::CookieJar;
-use cookie::time::Duration as OtherDuration; // Use from axum_extra
+// use axum_extra::extract::cookie::CookieJar;
+// use cookie::time::Duration as OtherDuration; // Use from axum_extra
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterUser {
@@ -48,9 +49,11 @@ pub struct Claims {
 pub struct UpdateUserData {
     pub name: Option<String>,
     pub email: Option<String>,
+    pub username: Option<String>,
     pub current_password: Option<String>,
     pub new_password: Option<String>,
     pub profile_img: Option<String>,
+    pub tries_used: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -66,35 +69,8 @@ pub struct UserResponse {
     pub usage: Usage,                        // User's usage data
 }
 
-// pub fn generate_token_and_set_cookie(user_id: ObjectId, jar: CookieJar) -> CookieJar {
-//     let claims = Claims {
-//         id: user_id.to_hex(), // Convert ObjectId to hex string
-//         exp: 172800,          // Token expiration in seconds (2 days in this example),
-//     };
-//         let jwt_secret = configration::gett::<String>("jwt_secret");
-
-//     let token = encode(
-//         &Header::default(),
-//         &claims,
-//         &EncodingKey::from_secret(jwt_secret.as_ref()),
-//     )
-//     .unwrap();
-
-//     // Build the cookie (like in Node.js example)
-//     let cookie = Cookie::build("token", token)
-//         .http_only(true) // Prevent XSS
-//         .secure(true) // Use secure flag for HTTPS
-//         .same_site(SameSite::Strict) // Prevent CSRF
-//         .max_age(OtherDuration::days(1)) // Expire in 1 day
-//         .path("/") // Set cookie for the entire domain
-//         .finish();
-
-//     // Add the cookie to the jar (this is equivalent to setting the cookie in the response)
-//     jar.add(cookie)
-// }
 pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
     let collection = User::get_user_collection().await;
-    let jwt_secret = configration::gett::<String>("jwt_secret");
 
     // Checking if the user already exists
     if collection
@@ -134,13 +110,18 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
     // Hashing the user's password
     let hashed_password = hash(&payload.password, DEFAULT_COST).unwrap();
 
+    // Creating the username, from the name of the user.
+    let username = payload.name.to_uppercase();
+
     // Step 6: Construct the new user document
     let new_user_doc = doc! {
         "name": &payload.name,
         "email": &payload.email,
+        "username": username,
         "password": &hashed_password,
         "google_id": None::<Bson>, // Not a Google login
         "login_type": "email", // Email login
+        "profileImg": None::<Bson>, // Optional field
         "subscription_plan": {
             "plan_type": "free", // Default to "free"
             "start_date":BsonDateTime::now().to_string(),
@@ -149,9 +130,9 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
         },
         "usage": {
             "tries_used": 0, // Start with 0 tries used
-            "max_tries": 5,  // Free plan allows 5 tries
+            "max_tries": 10,  // Free plan allows 10 tries
         },
-        "profileImg": None::<Bson>, // Optional field
+        "AccDeleted": false,
         "created_at": BsonDateTime::now().to_string(),
         "updated_at": BsonDateTime::now().to_string()
     };
@@ -165,50 +146,7 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
         .as_object_id()
         .expect("Failed to get user _id");
 
-    let expiration_time = Utc::now()
-        .checked_add_signed(Duration::seconds(3600 * 24)) // 24 hours
-        .expect("valid timestamp")
-        .timestamp();
-
-    // // Generate token and set the cookie
-    // let jar = generate_token_and_set_cookie(user_id, jar);
-
-    // Creating JWT token with the user_id in claims
-    let claims = Claims {
-        id: user_id.to_hex(), // Convert ObjectId to hex string
-        exp: expiration_time,
-    };
-
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(jwt_secret.as_ref()),
-    )
-    .unwrap();
-
-    // // Set the token in a cookie
-    let cookie: Cookie = Cookie::build(("token", token))
-        // .domain("www.rust-lang.org")
-        .path("/")
-        .same_site(SameSite::Strict) // Prevent CSRF
-        .secure(true)
-        .http_only(true)
-        .max_age(OtherDuration::days(1))
-        .build();
-
-    // Prepare the response with Set-Cookie header
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "Set-Cookie",
-        HeaderValue::from_str(&cookie.to_string()).unwrap(),
-    );
-
-    // Prepare the headers with Set-Cookie
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "Set-Cookie",
-        HeaderValue::from_str(&cookie.to_string()).unwrap(),
-    );
+    let headers = generate_token_and_set_cookie(user_id);
 
     // Construct and return the response
     Response::builder()
@@ -228,8 +166,6 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
 
 pub async fn login_user(Json(payload): Json<LoginUser>) -> Response {
     let collection = User::get_user_collection().await;
-
-    let jwt_secret = configration::gett::<String>("jwt_secret");
 
     // Checking if the user exists
     let user_doc = match collection
@@ -264,41 +200,9 @@ pub async fn login_user(Json(payload): Json<LoginUser>) -> Response {
     }
 
     // Extract the user ID from the document
-    let user_id = user_doc.get_object_id("_id").unwrap().to_hex();
+    let user_id = user_doc.get_object_id("_id").unwrap();
 
-    let expiration_time = Utc::now()
-        .checked_add_signed(chrono::Duration::seconds(3600 * 24))
-        .expect("valid timestamp")
-        .timestamp();
-
-    // Creating JWT token
-    let claims = Claims {
-        id: user_id,
-        exp: expiration_time,
-    };
-
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(jwt_secret.as_ref()),
-    )
-    .unwrap();
-
-    let cookie: Cookie = Cookie::build(("token", token))
-        // .domain("www.rust-lang.org")
-        .same_site(SameSite::Strict) // Prevent CSRF
-        .path("/")
-        .secure(true)
-        .http_only(true)
-        .max_age(OtherDuration::days(1))
-        .build();
-
-    // Prepare the headers with Set-Cookie
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "Set-Cookie",
-        HeaderValue::from_str(&cookie.to_string()).unwrap(),
-    );
+    let headers = generate_token_and_set_cookie(user_id);
 
     // Construct and return the response
     Response::builder()
@@ -314,6 +218,43 @@ pub async fn login_user(Json(payload): Json<LoginUser>) -> Response {
             .into(),
         )
         .unwrap()
+}
+
+
+pub async fn logout_user(Extension(claims): Extension<Claimss>)-> Response{
+    let user_id = match ObjectId::parse_str(&claims.id) {
+        Ok(oid) => oid,
+        Err(_) => {
+            return Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(
+                Json(json!({ "success": false, "message": "Unauthorized  in logout" }))
+                    .to_string()
+                    .into(),
+            )
+            .unwrap();
+        }
+    };
+
+
+    let headers = generate_token_and_unset_cookie(user_id);
+
+    // Construct and return the response
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Set-Cookie", headers["Set-Cookie"].clone())
+        .header("Content-Type", "application/json")
+        .body(
+            Json(json!({
+                "success": true,
+                "message": "Logout successful"
+            }))
+            .to_string()
+            .into(),
+        )
+        .unwrap()
+
+
 }
 
 pub async fn get_user_data(Extension(claims): Extension<Claimss>) -> impl IntoResponse {

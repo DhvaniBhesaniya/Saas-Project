@@ -13,6 +13,7 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import ToggleColorMode from "./components/ToggleColorMode";
 import getMPTheme from "./theme/getMPTheme";
 import SitemarkIcon from "./components/SitemarkIcon";
+import { Link } from "react-router-dom";
 
 const StyledAppBar = styled(AppBar)(({ theme }) => ({
   position: "relative",
@@ -55,7 +56,9 @@ function TemplateFrame({
               p: "8px 12px",
             }}
           >
-            <SitemarkIcon />
+            <Link to="/">
+                <SitemarkIcon />
+              </Link>
             {/* <Button
               variant="text"
               size="small"

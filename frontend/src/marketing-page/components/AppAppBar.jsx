@@ -12,7 +12,10 @@ import Drawer from "@mui/material/Drawer";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import Sitemark from "./SitemarkIcon";
-
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
+import { Menu } from "@mui/material";
+import toast from "react-hot-toast";
 const StyledToolbar = styled(Toolbar)(({ theme }) => ({
   display: "flex",
   alignItems: "center",
@@ -28,7 +31,61 @@ const StyledToolbar = styled(Toolbar)(({ theme }) => ({
 }));
 
 export default function AppAppBar() {
+  const navigate = useNavigate();
+  const [anchorEl, setAnchorEl] = React.useState(null);
+  const openn = Boolean(anchorEl);
+
+  // Function to handle menu opening
+  const handleClick = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  // Function to close the menu
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  const queryClient = useQueryClient();
+  const { mutate: logout } = useMutation({
+    mutationFn: async () => {
+      try {
+        const response = await fetch("/api/user/logout", {
+          method: "POST",
+        });
+        const data = await response.json();
+        console.log(data);
+      } catch (error) {
+        console.log(error);
+        throw new Error(error);
+      }
+    },
+    onSuccess: () => {
+      // Manually set authUser to null (immediate UI change)
+      queryClient.setQueryData(["authUser"], null);
+
+      // Show success message
+      toast.success("Logged out successfully");
+    },
+    onError: () => {
+      toast.error("Failed to logout");
+    },
+  });
+
+  // Function to handle scrolling to a section
+  const scrollToSection = (sectionId) => {
+    const section = document.getElementById(sectionId);
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth" });
+    }
+  };
   const [open, setOpen] = React.useState(false);
+  const { data: authUser } = useQuery({ queryKey: ["authUser"] });
+  const [userData, setUserData] = React.useState(null);
+
+  React.useEffect(() => {
+    console.log(authUser);
+    setUserData(authUser);
+  }, [authUser,userData]);
 
   const toggleDrawer = (newOpen) => () => {
     setOpen(newOpen);
@@ -49,18 +106,49 @@ export default function AppAppBar() {
           <Box
             sx={{ flexGrow: 1, display: "flex", alignItems: "center", px: 0 }}
           >
-            <Sitemark />
+            <Link to="/">
+              <Sitemark />
+            </Link>
+
             <Box sx={{ display: { xs: "none", md: "flex" } }}>
-              <Button variant="text" color="info" size="small">
+              <Button
+                variant="text"
+                color="info"
+                size="small"
+                onClick={() => scrollToSection("features")}
+              >
                 Features
               </Button>
-              <Button variant="text" color="info" size="small">
+              <Button
+                variant="text"
+                color="info"
+                size="small"
+                onClick={() => navigate("/product")}
+              >
+                Products
+              </Button>
+              <Button
+                variant="text"
+                color="info"
+                size="small"
+                onClick={() => scrollToSection("testimonials")}
+              >
                 Testimonials
               </Button>
-              <Button variant="text" color="info" size="small">
+              <Button
+                variant="text"
+                color="info"
+                size="small"
+                onClick={() => scrollToSection("highlights")}
+              >
                 Highlights
               </Button>
-              <Button variant="text" color="info" size="small">
+              <Button
+                variant="text"
+                color="info"
+                size="small"
+                onClick={() => scrollToSection("pricing")}
+              >
                 Pricing
               </Button>
               <Button
@@ -68,6 +156,7 @@ export default function AppAppBar() {
                 color="info"
                 size="small"
                 sx={{ minWidth: 0 }}
+                onClick={() => scrollToSection("faq")}
               >
                 FAQ
               </Button>
@@ -76,7 +165,7 @@ export default function AppAppBar() {
                 color="info"
                 size="small"
                 sx={{ minWidth: 0 }}
-                onClick={() => (window.location.href = `/blog`)}
+                onClick={() => navigate("/blog")}
               >
                 Blog
               </Button>
@@ -89,22 +178,49 @@ export default function AppAppBar() {
               alignItems: "center",
             }}
           >
-            <Button
-              color="primary"
-              variant="text"
-              size="small"
-              onClick={() => (window.location.href = `/login?mode=login`)}
-            >
-              Sign in
-            </Button>
-            <Button
-              color="primary"
-              variant="contained"
-              size="small"
-              onClick={() => (window.location.href = `/login?mode=signup`)}
-            >
-              Sign up
-            </Button>
+            {authUser ? (
+              <>
+                <Button
+                  color="primary"
+                  variant="text"
+                  size="small"
+                  onClick={handleClick} // Opens the dropdown
+                >
+                  Hello, {authUser?.name}
+                </Button>
+                <Menu anchorEl={anchorEl} open={openn} onClose={handleClose}>
+                  <MenuItem component={Link} to="/product?type=s">
+                    My Profile
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      logout(); // Trigger logout
+                    }}
+                  >
+                    Logout
+                  </MenuItem>
+                </Menu>
+              </>
+            ) : (
+              <>
+                <Button
+                  color="primary"
+                  variant="text"
+                  size="small"
+                  onClick={() => navigate("/login?mode=login")}
+                >
+                  Sign in
+                </Button>
+                <Button
+                  color="primary"
+                  variant="contained"
+                  size="small"
+                  onClick={() => navigate("/login?mode=signup")}
+                >
+                  Sign up
+                </Button>
+              </>
+            )}
           </Box>
           <Box sx={{ display: { sm: "flex", md: "none" } }}>
             <IconButton aria-label="Menu button" onClick={toggleDrawer(true)}>
@@ -129,31 +245,34 @@ export default function AppAppBar() {
                 <MenuItem>Highlights</MenuItem>
                 <MenuItem>Pricing</MenuItem>
                 <MenuItem>FAQ</MenuItem>
-                <MenuItem onClick={() => (window.location.href = `/blog`)}>
-                  Blog
-                </MenuItem>
-                <MenuItem>
-                  <Button
-                    color="primary"
-                    variant="contained"
-                    fullWidth
-                    onClick={() => (window.location.href = `/login?mode=login`)}
-                  >
-                    Sign up
-                  </Button>
-                </MenuItem>
-                <MenuItem>
-                  <Button
-                    color="primary"
-                    variant="outlined"
-                    fullWidth
-                    onClick={() =>
-                      (window.location.href = `/login?mode=signup`)
-                    }
-                  >
-                    Sign in
-                  </Button>
-                </MenuItem>
+                <MenuItem onClick={() => navigate("/blog")}>Blog</MenuItem>
+                {authUser ? (
+                  <MenuItem>Hello, {authUser?.name}</MenuItem>
+                ) : (
+                  <>
+                    <MenuItem>
+                      <Button
+                        color="primary"
+                        variant="contained"
+                        fullWidth
+                        onClick={() => navigate("/login?mode=login")}
+                      >
+                        Sign up
+                      </Button>
+                    </MenuItem>
+                    <MenuItem>
+                      <Button
+                        color="primary"
+                        variant="outlined"
+                        fullWidth
+                        o
+                        onClick={() => navigate("/login?mode=signup")}
+                      >
+                        Sign in
+                      </Button>
+                    </MenuItem>
+                  </>
+                )}
               </Box>
             </Drawer>
           </Box>
