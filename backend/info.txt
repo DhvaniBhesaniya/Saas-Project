@@ -1,0 +1,88 @@
+in the cloudinary crate 0.5.2
+on the image upload function   i have changes the upload result structure   added new structure  and image function 
+
+
+   pub async fn image(&self, src: Source, options: &UploadOptions<'_>) -> Result<UploadResult> {
+        let client = Client::new();
+        let file = match src {
+            Source::Path(path) => prepare_file(&path).await?,
+            Source::Url(url) => Part::text(url.as_str().to_string()),
+            Source::DataUrl(base64) => Part::text(base64),
+        };
+        let multipart = self.build_form_data(options).part("file", file);
+        let url = format!(
+            "https://api.cloudinary.com/v1_1/{}/image/upload",
+            self.cloud_name
+        );
+    
+        // Send the request
+        let response = client
+        .post(&url)
+        .multipart(multipart)
+        .send()
+        .await
+        .context(format!("upload to {}", url))?;
+
+    // Capture the response status before consuming the response
+    let status = response.status();
+    
+    // Get the response text (this consumes the response)
+    let text = response.text().await?;
+    // println!("Cloudinary response text: {:?}", text);
+
+    // Check if the response was successful based on the saved status
+    if status.is_success() {
+        // Parse success response into UploadResult::Success
+        let parsed_response: Response = serde_json::from_str(&text)
+            .context(format!("Failed to parse Cloudinary success response:\n\n {}", text))?;
+        return Ok(UploadResult::Success(Box::new(parsed_response)));
+    }
+
+    
+        // Otherwise, parse it as an error
+        let parsed_error: Error = serde_json::from_str(&text)
+            .context(format!("Failed to parse Cloudinary error response:\n\n {}", text))?;
+        Ok(UploadResult::Error(Box::new(parsed_error)))
+    }
+
+
+
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct Eager {
+    pub transformation: Option<String>,
+    pub width: Option<usize>,
+    pub height: Option<usize>,
+    pub bytes: Option<usize>,
+    pub format: Option<String>,
+    pub url: Option<String>,
+    pub secure_url: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Debug)]
+pub struct Response {
+    pub asset_id: String,
+    pub public_id: String,
+    pub version: usize,
+    pub version_id: String,
+    pub signature: String,
+    pub width: usize,
+    pub height: usize,
+    pub format: String,
+    pub resource_type: String,
+    #[serde(deserialize_with = "deserialize_from_str")]
+    pub created_at: DateTime<Utc>,
+    pub tags: Vec<String>,
+    pub bytes: usize,
+    pub r#type: String,
+    pub etag: String,
+    pub placeholder: bool,
+    pub url: String,
+    pub secure_url: String,
+    pub folder: Option<String>,
+    pub overwritten: Option<bool>,
+    pub original_filename: Option<String>,
+    pub original_extension: Option<String>,
+    pub api_key: String,
+    pub eager: Option<Vec<Eager>>,
+}

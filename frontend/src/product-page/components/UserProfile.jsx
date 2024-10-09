@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Avatar,
   Button,
@@ -21,12 +21,14 @@ import {
   CardContent,
 } from "@mui/material";
 import Grid from "@mui/material/Grid2";
+import { RiEditLine } from "react-icons/ri";
 
 import { styled } from "@mui/system";
 import { Alert } from "@mui/material";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { formatMemberSinceDate } from "../../utils/date";
+import useUpdateUserProfile from "../../api-service/ApiRequest"
 
 // Styled components for custom styling
 const ProfilePaper = styled(Paper)(({ theme }) => ({
@@ -38,23 +40,29 @@ const SectionTitle = styled(Typography)(({ theme }) => ({
   marginBottom: theme.spacing(2),
 }));
 
-const updateUserData = (data) => {
-  // Simulating API call
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      console.log("User data updated:", data);
-      resolve({ success: true });
-    }, 1000);
-  });
-};
-
 export default function UserProfilePage() {
   const [userData, setUserData] = useState(null);
-  // const queryClient = useQueryClient();
+
+  const profileImgRef = useRef(null);
+  const [profileImg, setProfileImg] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
   const { data: authUser } = useQuery({ queryKey: ["authUser"] });
+
+  const { isUpdatingProfile, updateProfile, updateError } =
+    useUpdateUserProfile();
+
+  const handleImgChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setProfileImg(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   useEffect(() => {
     // queryClient.fetchQuery({ queryKey: ["authUser"] });
@@ -67,7 +75,7 @@ export default function UserProfilePage() {
     setTimezone("UTC");
     setEmailNotifications(true);
     setPushNotifications(false);
-  }, [authUser,userData]);
+  }, [userData, authUser]);
 
   // Form state
   const [name, setName] = useState("");
@@ -81,28 +89,15 @@ export default function UserProfilePage() {
   const [emailNotifications, setEmailNotifications] = useState(false);
   const [pushNotifications, setPushNotifications] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await updateUserData({
-        name,
-        email,
-        username,
-        language,
-        timezone,
-        notificationPreferences: {
-          email: emailNotifications,
-          push: pushNotifications,
-        },
-      });
-      setSuccessMessage("Profile updated successfully");
-    } catch (err) {
-      setError("Failed to update profile");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    username: "",
+    currentPassword: "",
+    newPassword: "",
+  });
+
+  // console.log(formData);
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -113,7 +108,20 @@ export default function UserProfilePage() {
     setLoading(true);
     try {
       // Implement password change logic here
-      setSuccessMessage("Password changed successfully");
+      await updateProfile(formData);
+      if (!updateError) {
+        setConfirmPassword("");
+        setNewPassword("");
+        setCurrentPassword("");
+        setFormData({
+          name: "",
+          email: "",
+          username: "",
+          currentPassword: "",
+          newPassword: "",
+        });
+        setSuccessMessage("Password changed successfully");
+      }
     } catch (err) {
       setError("Failed to change password");
     } finally {
@@ -150,13 +158,57 @@ export default function UserProfilePage() {
           {/* User Information Display */}
           <ProfilePaper elevation={3}>
             <Grid container spacing={3} alignItems="center">
-              <Grid item>
+              <input
+                type="file"
+                hidden
+                accept="image/*"
+                ref={profileImgRef}
+                onChange={(e) => handleImgChange(e)}
+              />
+              {/* <Grid item>
                 <Avatar
                   alt={userData?.name}
-                  src={userData?.profileImg}
+                  src={
+                    profileImg ||
+                    userData?.profileImg ||
+                    "/avatar-placeholder.png"
+                  }
                   sx={{ width: 100, height: 100 }}
-                />
+                  onClick={() => profileImgRef.current.click()}
+                /> 
+                
+              </Grid>*/}
+
+              <Grid item>
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  {/* Avatar Component */}
+                  <Avatar
+                    alt={userData?.name}
+                    src={
+                      profileImg ||
+                      userData?.profileImg ||
+                      "/avatar-placeholder.png"
+                    }
+                    sx={{ width: 100, height: 100 }}
+                  />
+                  {/* Edit Icon Overlay */}
+                  <RiEditLine
+                    onClick={() => profileImgRef.current.click()}
+                    style={{
+                      position: "absolute",
+                      bottom: 0,
+                      right: 0,
+                      fontSize: "1.5rem", // Adjust the size of the icon
+                      backgroundColor: "grey",
+                      borderRadius: "50%",
+                      padding: "4px",
+                      boxShadow: "0 0 5px rgba(0,0,0,0.3)", // Optional shadow
+                      cursor: "pointer",
+                    }}
+                  />
+                </div>
               </Grid>
+
               <Grid item size={6.8}>
                 <Typography variant="h6">{userData?.name}</Typography>
                 <Typography variant="body1">{userData?.email}</Typography>
@@ -167,10 +219,17 @@ export default function UserProfilePage() {
                   Account Type: {userData?.subscription_plan?.plan_type}
                 </Typography>
               </Grid>
-              <Grid item>
-                <Button variant="contained" component="label">
-                  Change Picture
-                  <input type="file" hidden />
+              <Grid item sx={{ ml: 9 }}>
+                <Button
+                  variant="contained"
+                  component="label"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    await updateProfile({ profileImg });
+                    setProfileImg(null);
+                  }}
+                >
+                  {isUpdatingProfile ? "Changing..." : "Update"}
                 </Button>
               </Grid>
             </Grid>
@@ -179,14 +238,21 @@ export default function UserProfilePage() {
           {/* Editable User Details */}
           <ProfilePaper elevation={3}>
             <SectionTitle variant="h6">Personal Information</SectionTitle>
-            <form onSubmit={handleSubmit}>
+            <form>
               <Grid container spacing={3}>
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
+                    name="name"
                     label="Name"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setFormData({
+                        ...formData,
+                        [e.target.name]: e.target.value,
+                      });
+                    }}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -194,8 +260,15 @@ export default function UserProfilePage() {
                     fullWidth
                     label="Email"
                     type="email"
+                    name="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setFormData({
+                        ...formData,
+                        [e.target.name]: e.target.value,
+                      });
+                    }}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -203,12 +276,34 @@ export default function UserProfilePage() {
                     fullWidth
                     label="Username"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    name="username"
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      setFormData({
+                        ...formData,
+                        [e.target.name]: e.target.value,
+                      });
+                    }}
                   />
                 </Grid>
                 <Grid item xs={12}>
-                  <Button type="submit" variant="contained" color="primary">
-                    Update Profile
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    color="primary"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      await updateProfile(formData);
+                      setFormData({
+                        name: "",
+                        email: "",
+                        username: "",
+                        currentPassword: "",
+                        newPassword: "",
+                      });
+                    }}
+                  >
+                    {isUpdatingProfile ? "Updating..." : "Update Profile"}
                   </Button>
                 </Grid>
               </Grid>
@@ -225,8 +320,15 @@ export default function UserProfilePage() {
                     fullWidth
                     label="Current Password"
                     type="password"
+                    name="currentPassword"
                     value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    onChange={(e) => {
+                      setCurrentPassword(e.target.value);
+                      setFormData({
+                        ...formData,
+                        [e.target.name]: e.target.value,
+                      });
+                    }}
                   />
                 </Grid>
                 <Grid item size={6}>
@@ -234,8 +336,15 @@ export default function UserProfilePage() {
                     fullWidth
                     label="New Password"
                     type="password"
+                    name="newPassword"
                     value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      setFormData({
+                        ...formData,
+                        [e.target.name]: e.target.value,
+                      });
+                    }}
                   />
                 </Grid>
                 <Grid item size={6}>
@@ -248,8 +357,17 @@ export default function UserProfilePage() {
                   />
                 </Grid>
                 <Grid item xs={12}>
-                  <Button type="submit" variant="contained" color="primary">
-                    Change Password
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    color="primary"
+                    // onClick={async (e) => {
+                    //   e.preventDefault();
+                    //   await updateProfile(formData);
+
+                    // }}
+                  >
+                    {isUpdatingProfile ? "Updating..." : "Change Passowrd"}
                   </Button>
                 </Grid>
               </Grid>

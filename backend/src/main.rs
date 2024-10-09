@@ -1,7 +1,8 @@
 use axum::{routing::get, Router};
+use routes::genai_routes::create_genai_routes;
 use utils::db::connect_db;
 
-use crate::routes::create_user_routes;
+use crate::routes::user_route::create_user_routes;
 use std::net::SocketAddr;
 
 use tokio;
@@ -23,7 +24,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/test", get(handler))
-        .merge(create_user_routes());
+        .merge(create_user_routes())
+        .merge(create_genai_routes());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], gett("port")));
 

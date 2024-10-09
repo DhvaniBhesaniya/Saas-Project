@@ -19,6 +19,12 @@ import {
 } from "@mui/material";
 import { Upload, Send } from "@mui/icons-material";
 import { styled } from "@mui/material/styles";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  getGenaiChat,
+  getGenaiTranslatedText,
+} from "../../api-service/ApiRequest";
+import toast from "react-hot-toast";
 
 // Custom components that don't have direct MUI equivalents
 const ScrollArea = ({ children, className }) => (
@@ -68,7 +74,6 @@ const TranslateButton = styled(Button)(({ theme }) => ({
 export default function TranslationPlatform() {
   const [sourceLanguage, setSourceLanguage] = useState("en");
   const [targetLanguage, setTargetLanguage] = useState("es");
-  const [inputText, setInputText] = useState("");
   const [translatedText, setTranslatedText] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [chatMessages, setChatMessages] = useState([]);
@@ -77,6 +82,8 @@ export default function TranslationPlatform() {
   const languages = [
     { value: "en", label: "English" },
     { value: "es", label: "Spanish" },
+    { value: "hi", label: "Hindi" },
+    { value: "gu", label: "Gujarati" },
     { value: "fr", label: "French" },
     { value: "de", label: "German" },
     { value: "it", label: "Italian" },
@@ -87,8 +94,99 @@ export default function TranslationPlatform() {
     { value: "ko", label: "Korean" },
   ];
 
-  const handleTranslate = () => {
-    setTranslatedText(`Translated: ${inputText}`);
+  const [textformData, setTextFormData] = React.useState({
+    text: "",
+    language: "Spanish",
+  });
+
+  const queryClient = useQueryClient();
+
+  const { mutate: textMutation, isPending: textLoading } = useMutation({
+    mutationFn: async (textformData) => {
+      return getGenaiTranslatedText(textformData); // Use the loginUser API function
+    },
+    onSuccess: (data) => {
+      // Handle successful login
+      toast.success(data.message);
+      setTranslatedText(data.data);
+      // queryClient.fetchQuery({ queryKey: ["authUser"] });
+      // navigate("/");
+    },
+    onError: (error) => {
+      console.error("Error in Translating :", error);
+      // Handle login error (show toast notification or error message)
+    },
+  });
+  const handleTranslate = (e) => {
+    setTranslatedText("");
+    e.preventDefault();
+    textMutation(textformData);
+  };
+  const handleClear = (e) => {
+    e.preventDefault();
+    setTranslatedText("");
+    setTextFormData({
+      ...textformData,
+      text: "",
+    });
+  };
+
+  const [chatformData, setChatFormData] = React.useState({
+    textmessage: "",
+    language: "Spanish",
+  });
+
+  // useMutation for sending chat message and getting AI response
+  const {
+    mutate: ChatMutation,
+    isPending: ChatLoading,
+    isError,
+    error,
+  } = useMutation({
+    mutationFn: async (chatformData) => {
+      return getGenaiChat(chatformData); // Use your API function for sending the chat
+    },
+    onSuccess: (data) => {
+      // On success, append AI response to chat
+      const aiMessage = data.data || "AI response not available"; // Fallback if no data
+      setChatMessages((prevMessages) => [
+        ...prevMessages,
+        { text: aiMessage, sender: "ai" },
+      ]);
+      toast.success(data.message);
+    },
+    onError: (error) => {
+      // console.error("Error in AI chat:", error);
+      toast.error("Failed to get AI response.");
+    },
+  });
+
+  // Handle form submission
+  const handleChatSubmit = (event) => {
+    event.preventDefault();
+    const message = event.target.message.value;
+    if (message.trim()) {
+      // Add user message to the chat
+      setChatMessages((prevMessages) => [
+        ...prevMessages,
+        { text: message, sender: "user" },
+      ]);
+
+      // Prepare chat data for the mutation
+      const selectedLanguage = languages.find(
+        (lang) => lang.value === targetLanguage
+      );
+      const updatedFormData = {
+        textmessage: message,
+        language: selectedLanguage?.label || targetLanguage,
+      };
+
+      // Send the message to the AI and handle response
+      ChatMutation(updatedFormData);
+
+      // Reset the form field
+      event.target.reset();
+    }
   };
 
   const handleFileUpload = (event) => {
@@ -109,22 +207,6 @@ export default function TranslationPlatform() {
     }
   };
 
-  const handleChatSubmit = (event) => {
-    event.preventDefault();
-    const message = event.target.message.value;
-    if (message.trim()) {
-      setChatMessages([...chatMessages, { text: message, sender: "user" }]);
-      setTimeout(() => {
-        setChatMessages([
-          ...chatMessages,
-          { text: message, sender: "user" },
-          { text: `AI: ${message}`, sender: "ai" },
-        ]);
-      }, 1000);
-      event.target.reset();
-    }
-  };
-
   return (
     <div className="container mx-auto p-4">
       <Typography variant="h4" gutterBottom>
@@ -136,6 +218,7 @@ export default function TranslationPlatform() {
           setTabValue(newValue);
           setSourceLanguage("en");
           setTargetLanguage("es");
+          setTextFormData({ text: "", language: "Spanish" });
         }}
         aria-label="translation tabs"
         variant="scrollable"
@@ -178,7 +261,15 @@ export default function TranslationPlatform() {
                   <InputLabel>Target Language</InputLabel>
                   <StyledSelect
                     value={targetLanguage}
-                    onChange={(e) => setTargetLanguage(e.target.value)}
+                    onChange={(e) => {
+                      setTargetLanguage(e.target.value);
+                      setTextFormData({
+                        ...textformData,
+                        language: languages.find(
+                          (lang) => lang.value === e.target.value
+                        ).label,
+                      });
+                    }}
                     fullWidth
                     label="Target Language"
                   >
@@ -193,14 +284,31 @@ export default function TranslationPlatform() {
               <StyledTextArea
                 minRows={4}
                 placeholder="Enter text to translate"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                name="text"
+                value={textformData.text}
+                onChange={(e) => {
+                  setTextFormData({
+                    ...textformData,
+                    [e.target.name]: e.target.value,
+                  });
+                }}
               />
-              <TranslateButton variant="contained" onClick={handleTranslate}>
-                Translate
+              <TranslateButton
+                variant="contained"
+                onClick={handleTranslate}
+                sx={{ marginRight: 2 }}
+              >
+                {textLoading ? "Translating ..." : "Translate"}
+              </TranslateButton>
+              <TranslateButton variant="contained" onClick={handleClear}>
+                Clear
               </TranslateButton>
               <Typography variant="subtitle1">Translated Text</Typography>
-              <StyledTextArea minRows={4} value={`${translatedText}`} readOnly />
+              <StyledTextArea
+                minRows={4}
+                value={`${translatedText}`}
+                readOnly
+              />
             </CardContent>
           </StyledCard>
         )}
@@ -208,7 +316,7 @@ export default function TranslationPlatform() {
           <Card>
             <CardHeader
               title="Document Translation"
-              subheader="Upload and translate entire documents."
+              subheader="Upload and translate entire documents (.doc and .txt only)"
             />
             <CardContent>
               <Box
@@ -258,7 +366,7 @@ export default function TranslationPlatform() {
             </CardContent>
           </Card>
         )}
-        {tabValue === 2 && (
+        {/* {tabValue === 2 && (
           <Card>
             <CardHeader
               title="Chat with AI"
@@ -271,9 +379,9 @@ export default function TranslationPlatform() {
                   gridTemplateColumns: "1fr 1fr",
                   gap: 2,
                   mb: 2,
-                }}
-              >
-                <FormControl fullWidth>
+                }} 
+              >*/}
+        {/* <FormControl fullWidth>
                   <InputLabel>Your Language</InputLabel>
                   <Select fullWidth label="Your Language">
                     {languages.map((lang) => (
@@ -282,16 +390,21 @@ export default function TranslationPlatform() {
                       </MenuItem>
                     ))}
                   </Select>
-                </FormControl>
-                <FormControl fullWidth>
+                </FormControl> */}
+        {/* <FormControl fullWidth>
                   <InputLabel>Ai Language</InputLabel>
-                  <Select fullWidth label="Ai Language">
+                  <StyledSelect
+                    value={targetLanguage}
+                    onChange={(e) => setTargetLanguage(e.target.value)}
+                    fullWidth
+                    label="Target Language"
+                  >
                     {languages.map((lang) => (
                       <MenuItem key={lang.value} value={lang.value}>
                         {lang.label}
                       </MenuItem>
                     ))}
-                  </Select>
+                  </StyledSelect>
                 </FormControl>
               </Box>
               <ScrollArea className="h-[300px] w-full border rounded-md p-4 mb-4">
@@ -320,8 +433,175 @@ export default function TranslationPlatform() {
               </form>
             </CardContent>
           </Card>
+        )} */}
+
+        {tabValue === 2 && (
+          <Card>
+            <CardHeader
+              title="Chat with AI"
+              subheader="Chat with AI in any language."
+            />
+            <CardContent>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 2,
+                  mb: 2,
+                }}
+              >
+                <FormControl fullWidth>
+                  <InputLabel>Ai Language</InputLabel>
+                  <StyledSelect
+                    value={targetLanguage}
+                    onChange={(e) => setTargetLanguage(e.target.value)}
+                    fullWidth
+                    label="Ai Language"
+                  >
+                    {languages.map((lang) => (
+                      <MenuItem key={lang.value} value={lang.value}>
+                        {lang.label}
+                      </MenuItem>
+                    ))}
+                  </StyledSelect>
+                </FormControl>
+              </Box>
+
+              {/* Chat Display Area */}
+              <ScrollArea className="h-[300px] w-full border rounded-md p-4 mb-4">
+                {chatMessages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`chat ${msg.sender === "user" ? "chat-end" : "chat-start"}`}
+                  >
+                    <div className="chat-image avatar">
+                      <div className="w-10 rounded-full">
+                        <img
+                          alt={
+                            msg.sender === "user" ? "User avatar" : "AI avatar"
+                          }
+                          src={
+                            msg.sender === "user"
+                              ? "https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" // User image
+                              : "https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" // AI image
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="chat-bubble break-words max-w-xs">
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+              </ScrollArea>
+
+              {/* Chat Input */}
+              <form onSubmit={handleChatSubmit} className="flex gap-2">
+                <TextField
+                  name="message"
+                  placeholder="Type your message..."
+                  fullWidth
+                  multiline
+                  rows={1.5}
+                  variant="outlined"
+                  slotProps={{
+                    style: {
+                      whiteSpace: "pre-wrap", // Wrap text within TextField
+                      overflow: "auto", // Make it scrollable
+                      wordBreak: "break-word", // Wrap long words
+                    },
+                  }}
+                />
+                <Button type="submit" variant="contained" endIcon={<Send />}>
+                  Send
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         )}
       </Box>
     </div>
   );
 }
+
+// <Card>
+// <CardHeader
+//   title="Chat with AI"
+//   subheader="Chat with AI in any language."
+// />
+// <CardContent>
+//   <Box
+//     sx={{
+//       display: "grid",
+//       gridTemplateColumns: "1fr 1fr",
+//       gap: 2,
+//       mb: 2,
+//     }}
+//   >
+//     <FormControl fullWidth>
+//       <InputLabel>Ai Language</InputLabel>
+//       <StyledSelect
+//         value={targetLanguage}
+//         onChange={(e) => setTargetLanguage(e.target.value)}
+//         fullWidth
+//         label="Target Language"
+//       >
+//         {languages.map((lang) => (
+//           <MenuItem key={lang.value} value={lang.value}>
+//             {lang.label}
+//           </MenuItem>
+//         ))}
+//       </StyledSelect>
+//     </FormControl>
+//   </Box>
+
+//   <ScrollArea className="h-[300px] w-full border rounded-md p-4 mb-4">
+//     {chatMessages.map((msg, index) => (
+//       <div
+//         key={index}
+//         className={`chat ${msg.sender === "user" ? "chat-end" : "chat-start"}`}
+//       >
+//         <div className="chat-image avatar">
+//           <div className="w-10 rounded-full">
+//             <img
+//               alt={
+//                 msg.sender === "user" ? "User avatar" : "AI avatar"
+//               }
+//               src={
+//                 msg.sender === "user"
+//                   ? "https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" // Replace with actual user avatar URL
+//                   : "https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp"
+//               } // Replace with actual AI avatar URL
+//             />
+//           </div>
+//         </div>
+//         <div className="chat-bubble break-words max-w-xs">
+//           {msg.text}
+//         </div>{" "}
+
+//       </div>
+//     ))}
+//   </ScrollArea>
+
+//   <form onSubmit={handleChatSubmit} className="flex gap-2">
+//     <TextField
+//       name="message"
+//       placeholder="Type your message..."
+//       fullWidth
+//       multiline
+//       rows={1.5} // This sets the default height of the text area
+//       variant="outlined"
+//       slotProps={{
+//         style: {
+//           whiteSpace: "pre-wrap", // Allows text wrapping within the TextField
+//           overflow: "auto", // Makes the TextField scrollable when content overflows
+//           wordBreak: "break-word", // Forces long words to wrap onto new lines
+//         },
+//       }}
+//     />
+//     <Button type="submit" variant="contained" endIcon={<Send />}>
+//       Send
+//     </Button>
+//   </form>
+// </CardContent>
+// </Card>

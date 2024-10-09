@@ -15,6 +15,31 @@
 narutogokuluffy009 , saas-app-009
 
 mongodb+srv://narutogokuluffy009:<db_password>@zoro.1a4dm.mongodb.net/?retryWrites=true&w=majority&appName=Zoro
+
+
+
+
+
+
+[
+ # cloudinary docs , 
+
+ https://cloudinary.com/documentation/upload_images#landingpage
+ https://cloudinary.com/documentation/image_upload_api_reference#upload_required_parameters
+ https://cloudinary.com/documentation/image_upload_api_reference#destroy
+
+]
+
+
+
+[
+
+# ai integration with rust youtube videos
+
+https://www.youtube.com/playlist?list=PL7r-PXl6ZPcBcLsBdBABOFUuLziNyigqj
+
+
+]
 ....................................................................................................................................................
 
 
@@ -56,7 +81,7 @@ npm i @tanstack/react-query
 npm install js-cookie
 
 
-
+npm i -D daisyui@latest
 
 
 

@@ -1,5 +1,9 @@
 // import Cookies from "js-cookie";
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+
+
 // // ApiRequest.jsx
 
 // // Helper function to get token from localStorage and set headers
@@ -62,7 +66,7 @@ export const fetchAuthUser = async () => {
   try {
     const response = await fetch(`/api/user/userdata`, {
       method: "GET",
-     headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
     });
 
     const responseData = await response.json();
@@ -77,3 +81,92 @@ export const fetchAuthUser = async () => {
     throw error;
   }
 };
+
+ const useUpdateUserProfile = () => {
+  const queryClient = useQueryClient();
+
+  const { mutateAsync: updateProfile, isPending: isUpdatingProfile, error: updateError } =
+    useMutation({
+      mutationFn: async (formData) => {
+        try {
+          console.log(formData);
+          const res = await fetch(`/api/user/updateuser`, {
+            method: "POST",
+            headers: {
+              "Content-Type": " application/json",
+            },
+            body: JSON.stringify(formData),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || "Something went wrong");
+          }
+          return data;
+        } catch (error) {
+          throw new Error(error.message);
+        }
+      },
+      onSuccess: () => {
+        toast.success(" Updated successfully");
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["authUser"] }),
+        ]);
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    });
+
+  return { updateProfile, isUpdatingProfile ,updateError};
+};
+
+ export default useUpdateUserProfile;
+
+
+
+// Gen ai api request
+
+
+export const getGenaiTranslatedText = async (textformData) => {
+  try {
+    const response = await fetch(`/api/genai/text`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+
+      body: JSON.stringify(textformData),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(responseData.message || "Failed to get text..");
+    }
+
+    return responseData; // Return the user data
+  } catch (error) {
+    console.error("Error fetching Translated text:", error);
+    throw error;
+  }
+};
+export const getGenaiChat = async (ChatformData) => {
+  try {
+    const response = await fetch(`/api/genai/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+
+      body: JSON.stringify(ChatformData),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(responseData.message || "Failed to ai response..");
+    }
+
+    return responseData; // Return the user data
+  } catch (error) {
+    console.error("Error fetching ai response:", error);
+    throw error;
+  }
+};
+

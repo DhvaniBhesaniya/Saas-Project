@@ -46,7 +46,7 @@ pub struct Claims {
     exp: i64,
 }
 
-pub fn generate_token_and_set_cookie(user_id: ObjectId) -> HeaderMap {
+pub async fn generate_token_and_set_cookie(user_id: ObjectId) -> HeaderMap {
     let jwt_secret = configration::gett::<String>("jwt_secret");
 
     let expiration_time = Utc::now()

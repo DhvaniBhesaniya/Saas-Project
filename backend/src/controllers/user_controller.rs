@@ -1,24 +1,8 @@
-use crate::models::user_model::{SubscriptionPlan, Usage, User};
-use crate::utils::generate_token::{generate_token_and_set_cookie, generate_token_and_unset_cookie};
-use crate::middleware::auth::Claimss;
-use axum::response::Response;
-use axum::{
-    extract::Form,
-    extract::{Extension, Json},
-    http::StatusCode,
-    response::IntoResponse,
-};
-use bcrypt::{hash, verify, DEFAULT_COST};
-use bson::Document;
-// use chrono::{Duration, Utc};
-
-// use jsonwebtoken::{encode, EncodingKey, Header};
-use mongodb::bson::{doc, oid::ObjectId, Bson, DateTime as BsonDateTime};
-
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-
-use validator::validate_email;
+// use reqwest::Client;
+// use sha2::Digest;
+// use std::collections::HashMap;
+// use std::time::{SystemTime, UNIX_EPOCH};
+// use sha2::Sha256;
 
 // use axum::http::{HeaderMap, HeaderValue};
 // // use cookie::{time::Duration as OtherDuration, Cookie};
@@ -26,6 +10,34 @@ use validator::validate_email;
 
 // use axum_extra::extract::cookie::CookieJar;
 // use cookie::time::Duration as OtherDuration; // Use from axum_extra
+
+use crate::configration::gett;
+use crate::middleware::auth::Claimss;
+use crate::models::user_model::{SubscriptionPlan, Usage, User};
+use crate::utils::generate_token::{
+    generate_token_and_set_cookie, generate_token_and_unset_cookie,
+};
+use axum::response::Response;
+use axum::{
+    // extract::Form,
+    extract::{Extension, Json},
+    http::StatusCode,
+    response::IntoResponse,
+};
+use bcrypt::{hash, verify, DEFAULT_COST};
+use bson::Document;
+use regex::Regex;
+// use chrono::{Duration, Utc};
+
+use cloudinary::upload::result::UploadResult;
+// use jsonwebtoken::{encode, EncodingKey, Header};
+use mongodb::bson::{doc, oid::ObjectId, Bson, DateTime as BsonDateTime};
+
+use cloudinary::upload::{Source, Upload, UploadOptions};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+use validator::validate_email;
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterUser {
@@ -45,13 +57,16 @@ pub struct Claims {
     exp: i64,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct UpdateUserData {
     pub name: Option<String>,
     pub email: Option<String>,
     pub username: Option<String>,
+    #[serde(rename = "currentPassword")]
     pub current_password: Option<String>,
+    #[serde(rename = "newPassword")]
     pub new_password: Option<String>,
+    #[serde(rename = "profileImg")]
     pub profile_img: Option<String>,
     pub tries_used: Option<u32>,
 }
@@ -146,7 +161,7 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
         .as_object_id()
         .expect("Failed to get user _id");
 
-    let headers = generate_token_and_set_cookie(user_id);
+    let headers = generate_token_and_set_cookie(user_id).await;
 
     // Construct and return the response
     Response::builder()
@@ -165,6 +180,7 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
 }
 
 pub async fn login_user(Json(payload): Json<LoginUser>) -> Response {
+    log::info!("accessing login user function.");
     let collection = User::get_user_collection().await;
 
     // Checking if the user exists
@@ -202,7 +218,7 @@ pub async fn login_user(Json(payload): Json<LoginUser>) -> Response {
     // Extract the user ID from the document
     let user_id = user_doc.get_object_id("_id").unwrap();
 
-    let headers = generate_token_and_set_cookie(user_id);
+    let headers = generate_token_and_set_cookie(user_id).await;
 
     // Construct and return the response
     Response::builder()
@@ -220,22 +236,20 @@ pub async fn login_user(Json(payload): Json<LoginUser>) -> Response {
         .unwrap()
 }
 
-
-pub async fn logout_user(Extension(claims): Extension<Claimss>)-> Response{
+pub async fn logout_user(Extension(claims): Extension<Claimss>) -> Response {
     let user_id = match ObjectId::parse_str(&claims.id) {
         Ok(oid) => oid,
         Err(_) => {
             return Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body(
-                Json(json!({ "success": false, "message": "Unauthorized  in logout" }))
-                    .to_string()
-                    .into(),
-            )
-            .unwrap();
+                .status(StatusCode::UNAUTHORIZED)
+                .body(
+                    Json(json!({ "success": false, "message": "Unauthorized  in logout" }))
+                        .to_string()
+                        .into(),
+                )
+                .unwrap();
         }
     };
-
 
     let headers = generate_token_and_unset_cookie(user_id);
 
@@ -253,8 +267,6 @@ pub async fn logout_user(Extension(claims): Extension<Claimss>)-> Response{
             .into(),
         )
         .unwrap()
-
-
 }
 
 pub async fn get_user_data(Extension(claims): Extension<Claimss>) -> impl IntoResponse {
@@ -305,7 +317,7 @@ pub async fn get_user_data(Extension(claims): Extension<Claimss>) -> impl IntoRe
 
 pub async fn update_user_data(
     Extension(claims): Extension<Claimss>,
-    Form(form): Form<UpdateUserData>,
+    Json(form): Json<UpdateUserData>,
 ) -> impl IntoResponse {
     // Initialize the user collection
     let collection = User::get_user_collection().await;
@@ -337,43 +349,83 @@ pub async fn update_user_data(
         }
     };
 
+    // Assuming user_doc is a BSON document, extract the `profileImg` field
+    let profile_img_old = user_doc.get("profileImg").and_then(|v| match v {
+        Bson::String(url) => Some(url.clone()),
+        _ => None,
+    });
+
     // Create a document for the updates
     let mut update_fields = Document::new();
-
     // Update name if provided
     if let Some(name) = &form.name {
-        update_fields.insert("name", name.clone());
+        if !name.is_empty() {
+            update_fields.insert("name", name.clone());
+        }
     }
 
     // Update email if provided
     if let Some(email) = &form.email {
-        update_fields.insert("email", email.clone());
+        if !email.is_empty() {
+            update_fields.insert("email", email.clone());
+        }
+    }
+    // Update email if provided
+    if let Some(username) = &form.username {
+        if !username.is_empty() {
+            update_fields.insert("username", username.clone());
+        }
     }
 
     // Update profile image if provided
     if let Some(profile_img) = &form.profile_img {
-        update_fields.insert("profileImg", profile_img.clone());
+        let update_profile_img_result = match upload_image_to_cloudinary(profile_img).await {
+            Ok(url) => Ok(url),
+            Err(e) => Err(e.to_string()),
+        };
+
+        match update_profile_img_result {
+            Ok(url) => {
+                // println!(" secure url : {:?}", url);
+                if let Some(profile_img_old) = profile_img_old {
+                    let _destroy_old_img = match destroy_profile_image(&profile_img_old).await {
+                        Ok(msg) => Ok(msg),
+                        Err(e) => Err(e.to_string()),
+                    };
+                }
+                update_fields.insert("profileImg", url);
+            }
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "success": false, "message": e })),
+                )
+            }
+        }
     }
 
     // Handle password change
     if let (Some(current), Some(new)) = (&form.current_password, &form.new_password) {
-        if current.is_empty() || new.is_empty() {
+        if current.is_empty() && new.is_empty() {
+            // Don't update the password if all three fields are empty
+        } else if current.is_empty() || new.is_empty() {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(
-                    json!({ "success": false, "message": "Current password and new password cannot be empty" }),
+                    json!({ "success": false, "message": "Any password fields cannot be empty" }),
                 ),
             );
-        }
-        let stored_password = user_doc.get_str("password").unwrap();
-        if verify(&current, stored_password).unwrap() {
-            let hashed_password = hash(new, DEFAULT_COST).unwrap();
-            update_fields.insert("password", hashed_password);
         } else {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "success": false, "message": "Current password is incorrect" })),
-            );
+            let stored_password = user_doc.get_str("password").unwrap();
+            if verify(&current, stored_password).unwrap() {
+                let hashed_password = hash(new, DEFAULT_COST).unwrap();
+                update_fields.insert("password", hashed_password);
+            } else {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "success": false, "message": "Current password is incorrect" })),
+                );
+            }
         }
     }
     // Update the user document in MongoDB
@@ -394,108 +446,198 @@ pub async fn update_user_data(
     )
 }
 
-// pub async fn get_user_data(Extension(claims): Extension<Claimss>) -> impl IntoResponse {
-//     let user_id = match ObjectId::parse_str(&claims.id) {
-//         Ok(oid) => oid,
-//         Err(_) => {
-//             return (
-//                 StatusCode::BAD_REQUEST,
-//                 Json(json!({ "success": false, "message": "Invalid user ID" })),
-//             );
+pub async fn upload_image_to_cloudinary(profile_img: &str) -> Result<String, String> {
+    let cloud_name = gett::<String>("CLOUDINARY_CLOUD_NAME");
+    let api_key = gett::<String>("CLOUDINARY_API_KEY");
+    let api_secret = gett::<String>("CLOUDINARY_API_SECRET");
+
+    let options = UploadOptions::new();
+    let upload = Upload::new(
+        api_key.to_string(),
+        cloud_name.to_string(),
+        api_secret.to_string(),
+    );
+
+    // Upload the image to Cloudinary
+    let upload_result = upload
+        .image(Source::DataUrl(profile_img.into()), &options)
+        .await;
+
+    // println!("Upload result :: , {:?}", upload_result);
+
+    match upload_result {
+        // If successful, return the secure URL
+        Ok(result) => {
+            if let UploadResult::Success(response) = result {
+               
+                Ok(response.secure_url)
+            } else {
+                
+                Err("Upload failed, but no valid URL returned.".to_string())
+            }
+        }
+        // Handle errors
+        Err(e) => {
+            // Attempt to parse and extract the secure_url from the error message
+            let error_message = format!("{:?}", e);
+            log::error!("{}",error_message);
+
+            // Use regex to find the secure_url in the error message
+            let re = Regex::new(r#""secure_url":"(https://[^"]+)""#).unwrap();
+            if let Some(captures) = re.captures(&error_message) {
+                if let Some(secure_url) = captures.get(1) {
+                    return Ok(secure_url.as_str().to_string());
+                }
+            }
+
+            Err("Failed to extract secure_url from error".to_string())
+        }
+    }
+}
+
+pub async fn destroy_profile_image(profile_img_url: &str) -> Result<String, String> {
+    // Cloudinary configuration
+    let cloud_name = gett::<String>("CLOUDINARY_CLOUD_NAME");
+    let api_key = gett::<String>("CLOUDINARY_API_KEY");
+    let api_secret = gett::<String>("CLOUDINARY_API_SECRET");
+
+    // Extract public_id from the profile_img_url
+    let re = Regex::new(r"/v\d+/(.+)\.[a-zA-Z]+$").unwrap(); // Extracts the part between `/v<digits>/` and the file extension
+    let pub_id = match re.captures(profile_img_url) {
+        Some(caps) => caps.get(1).map_or("", |m| m.as_str()).to_string(),
+        None => {
+            return Err("Failed to extract public_id from the URL".to_string());
+        }
+    };
+
+    // Cloudinary upload configuration for destroy action
+    let upload = Upload::new(
+        api_key.to_string(),
+        cloud_name.to_string(),
+        api_secret.to_string(),
+    );
+
+    // Perform the destroy action for the public_id
+    let upload_result = match upload.destroy(pub_id).await {
+        Ok(result) => {
+            // Check if the image was destroyed successfully
+            if result.result == "ok" {
+                // log::info!("Image destroyed successfully");
+                Ok("Image destroyed successfully".to_string())
+            } else {
+                Err(format!("Failed to destroy image: {:?}", result))
+            }
+        }
+        Err(e) => Err(format!("Failed to destroy image: {}", e)),
+    };
+
+    upload_result
+}
+// destory the image .
+
+// pub async fn destroy_profile_image_curl(profile_img_url: &str) -> Result<String, String> {
+//     // Cloudinary configuration
+//     let cloud_name = gett::<String>("CLOUDINARY_CLOUD_NAME");
+//     let api_key = gett::<String>("CLOUDINARY_API_KEY");
+//     let api_secret = gett::<String>("CLOUDINARY_API_SECRET");
+
+//     // Extract public_id from the profile_img_url
+//     let re = Regex::new(r"/v\d+/(.+)\.[a-zA-Z]+$").unwrap(); // Extracts the part between `/v<digits>/` and the file extension
+//     let pub_id = match re.captures(profile_img_url) {
+//         Some(caps) => caps.get(1).map_or("", |m| m.as_str()).to_string(),
+//         None => {
+//             return Err("Failed to extract public_id from the URL".to_string());
 //         }
 //     };
 
-//     let collection = User::get_user_collection().await;
-//     match collection.find_one(doc! { "_id": user_id }).await {
-//         Ok(Some(mut user_doc)) => {
-//             if let Some(id) = user_doc.remove("_id") {
-//                 if let Some(object_id) = id.as_object_id() {
-//                     user_doc.insert("_id", object_id.to_string());
-//                 }
-//             }
+//     // Generate timestamp (current Unix time in seconds)
+//     let start = SystemTime::now();
+//     let timestamp = start.duration_since(UNIX_EPOCH).unwrap().as_secs();
+//     let timestamp_str = timestamp.to_string();
 
-//             // Remove the "password" field from the user document
-//             user_doc.remove("password");
+//     // Create the string to sign using the public_id, timestamp, and secret
+//     let payload = format!("public_id={}&timestamp={}{}", pub_id, timestamp, api_secret);
 
-//             // Extract the user's data into the UserResponse structure
+//     // Generate the signature using SHA-256
+//     let mut hasher = Sha256::new();
+//     hasher.update(payload.as_bytes());
+//     let signature = hex::encode(hasher.finalize());
 
-//             // Handle subscription_plan (nested object)
-//             // let subscription_plan_doc = user_doc.get_document("subscription_plan").ok();
-//             // let subscription_plan = if let Some(sub_plan) = subscription_plan_doc {
-//             //     SubscriptionPlan {
-//             //         plan_type: sub_plan
-//             //             .get_str("plan_type")
-//             //             .unwrap_or_default()
-//             //             .to_string(),
-//             //         start_date: sub_plan
-//             //             .get_datetime("start_date")
-//             //             .ok()
-//             //             .map(|dt| dt.to_owned()), // Convert to ISO 8601 formatted string
-//             //         end_date: sub_plan
-//             //             .get_datetime("end_date")
-//             //             .ok()
-//             //             .map(|dt| dt.to_owned()), // Convert to ISO 8601 formatted string
-//             //         payment_status: sub_plan
-//             //             .get_str("payment_status")
-//             //             .ok()
-//             //             .map(|s| s.to_string().to_owned()),
-//             //     }
-//             // } else {
-//             //     SubscriptionPlan {
-//             //         plan_type: "".to_string(),
-//             //         start_date: None,
-//             //         end_date: None,
-//             //         payment_status: None,
-//             //     }
-//             // };
+//     // Prepare the form data for the Cloudinary destroy API
+//     let form = HashMap::from([
+//         ("public_id", pub_id.as_str()),   // Extracted public_id
+//         ("api_key", &api_key),            // Cloudinary API key
+//         ("timestamp", &timestamp_str),    // Timestamp
+//         ("signature", &signature),        // Generated signature
+//     ]);
 
-//             // // Handle usage (nested object)
-//             // let usage_doc = user_doc.get_document("usage").ok();
-//             // let usage = if let Some(usage_data) = usage_doc {
-//             //     Usage {
-//             //         tries_used: usage_data.get_i32("tries_used").unwrap_or_default(),
-//             //         max_tries: usage_data.get_i32("max_tries").unwrap_or_default(),
-//             //     }
-//             // } else {
-//             //     Usage {
-//             //         tries_used: 0,
-//             //         max_tries: 0,
-//             //     }
-//             // };
-
-//             // let user_response = UserResponse {
-//             //     id: user_doc
-//             //         .get_object_id("_id")
-//             //         .map(|oid| oid.to_hex())
-//             //         .unwrap_or_default(),
-//             //     name: user_doc.get_str("name").unwrap_or_default().to_string(),
-//             //     email: user_doc.get_str("email").unwrap_or_default().to_string(),
-//             //     google_id: user_doc.get_str("google_id").map(|s| s.to_string()).ok(),
-//             //     login_type: user_doc.get_str("login_type").map(|s| s.to_string()).ok(),
-//             //     profile_img: user_doc.get_str("profileImg").map(|s| s.to_string()).ok(),
-//             //     subscription_plan, // Use the subscription_plan we built above
-//             //     usage,             // Use the usage object we built above
-//             // };
-
-//             // Return the user data
-//             (
-//                 StatusCode::OK,
-//                 Json(json!({ "success": true, "data": user_doc })),
-//             )
+//     // Perform the POST request to Cloudinary destroy endpoint
+//     let client = Client::new();
+//     let url = format!(
+//         "https://api.cloudinary.com/v1_1/{}/image/destroy",
+//         cloud_name
+//     );
+//     let response = match client.post(&url).form(&form).send().await {
+//         Ok(res) => res,
+//         Err(err) => {
+//             return Err(format!("Failed to send request to Cloudinary: {}", err));
 //         }
-//         Ok(None) => {
-//             // User not found
-//             (
-//                 StatusCode::NOT_FOUND,
-//                 Json(json!({ "success": false, "message": "User not found" })),
-//             )
-//         }
-//         Err(e) => {
-//             // Error during database lookup
-//             (
-//                 StatusCode::INTERNAL_SERVER_ERROR,
-//                 Json(json!({ "success": false, "message": e.to_string() })),
-//             )
-//         }
+//     };
+
+//     // Check if the response is successful
+//     if response.status().is_success() {
+//         let res_text = response.text().await.unwrap_or_default();
+//         println!("Response from Cloudinary: {}", res_text);
+//         Ok("Image destroyed successfully".to_string())
+//     } else {
+//         let res_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+//         println!("Failed to destroy image: {}", res_text);
+//         Err(format!("Failed to destroy image: {}", res_text))
 //     }
+// }
+
+// pub async fn upload_profile_image(profile_img: &str) -> Result<String, Box<dyn std::error::Error>> {
+//     // Cloudinary configuration
+//     let cloud_name = gett::<String>("CLOUDINARY_CLOUD_NAME");
+//     let api_key = gett::<String>("CLOUDINARY_API_KEY");
+//     let api_secret = gett::<String>("CLOUDINARY_API_SECRET");
+
+//     // Generate timestamp (current Unix time in seconds)
+//     let start = SystemTime::now();
+//     let timestamp = start.duration_since(UNIX_EPOCH)?.as_secs();
+//     let timestamp_str = timestamp.to_string();
+
+//     // Create the string to sign using only the timestamp and the secret
+//     let payload = format!("timestamp={}{}", timestamp, api_secret); // Include api_secret directly in the string to be hashed
+
+//     // Generate the signature using SHA-256
+//     let mut hasher = Sha256::new();
+//     hasher.update(payload.as_bytes());
+//     let signature = hex::encode(hasher.finalize());
+
+//     // Prepare the multipart form data
+//     let form = HashMap::from([
+//         ("file", profile_img), // Data URL (Base64 encoded)
+//         ("media_metadata", "true"),
+//         ("api_key", &api_key),         // API key
+//         ("timestamp", &timestamp_str), // Timestamp
+//         ("signature", &signature),     // Correct signature
+//     ]);
+
+//     // Perform the POST request to Cloudinary
+//     let client = Client::new();
+//     let url = format!(
+//         "https://api.cloudinary.com/v1_1/{}/image/upload",
+//         cloud_name
+//     );
+//     let response = client.post(&url).form(&form).send().await?;
+
+//     // Print the response for debugging purposes
+//     println!("Response .. {:?}", response);
+
+//     // Get the URL of the uploaded image from the response (assuming it's in JSON)
+//     // let uploaded_url = response.secure_url;
+//     // println!("Uploaded image URL: {}", uploaded_url);
+
+//     Ok("abc".to_string())
 // }

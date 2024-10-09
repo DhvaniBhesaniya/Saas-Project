@@ -31,7 +31,7 @@ pub struct User {
     pub acc_deleted: bool,
 }
 
-// Define the subscription plan model
+// Define the subscription plan model      //#[serde(deserialize_with = "deserialize_from_str")]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SubscriptionPlan {
     pub plan_type: String,                 // "free", "custom", "recommended"

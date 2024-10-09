@@ -9,6 +9,7 @@
   "CLOUDINARY_CLOUD_NAME": "djigcn0dy",
   "CLOUDINARY_API_KEY": 427398293199567,
   "CLOUDINARY_API_SECRET": "o5-D-OB489U352LTAi6BBxBhOSQ",
+  "GEMINI_API_KEY": "AIzaSyBQ5M1hU84zqMNYv4EOFihMQTRLrZ-ii5I",
   "logger": {
     "exceptionLogFileName": "exceptions.log",
     "httpErrorLogFileName": "httpError.log",
