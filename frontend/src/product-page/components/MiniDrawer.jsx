@@ -24,7 +24,7 @@ import { BsTranslate } from "react-icons/bs";
 import { CgProfile } from "react-icons/cg";
 import { CiSettings } from "react-icons/ci";
 import { FiHelpCircle } from "react-icons/fi";
-import CardAlert from "./CardAlert";
+import UsageTracker from "./UsageTracker";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import UserProfile from "./UserProfile";
 import { useQuery } from "@tanstack/react-query";
@@ -259,7 +259,7 @@ export default function MiniDrawer() {
               }}
             >
               {open ? (
-                <CardAlert />
+                <UsageTracker />
               ) : (
                 <AutoAwesomeRoundedIcon fontSize="small" sx={{ mr: 1 }} />
               )}
@@ -268,7 +268,8 @@ export default function MiniDrawer() {
         </Box>
 
         {/*  profile tab */}
-        <Box className="mt-4 mb-16 mx-2  p-0.1 rounded">
+        
+        <Box  className="mt-4 mb-16 mx-2  p-0.1 rounded backdrop-brightness-200">
           <ListItem disablePadding sx={{ display: "block" }}>
             <ListItemButton
               sx={{

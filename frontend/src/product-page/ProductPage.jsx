@@ -4,6 +4,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import getProductTheme from "./theme/getProductTheme";
 import TemplateFrame from "./TemplateFrame";
 import MiniDrawer from "./components/MiniDrawer";
+import { UsageProvider } from "../contexts/UsageContext";
 
 export default function ProductPage() {
   const [mode, setMode] = React.useState("light");
@@ -45,7 +46,9 @@ export default function ProductPage() {
     >
       <ThemeProvider theme={showCustomTheme ? ProductTheme : defaultTheme}>
         <CssBaseline enableColorScheme />
+        <UsageProvider>
         <MiniDrawer />
+        </UsageProvider>
       </ThemeProvider>
     </TemplateFrame>
   );

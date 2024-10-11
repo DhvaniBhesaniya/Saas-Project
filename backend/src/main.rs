@@ -1,6 +1,7 @@
 use axum::{routing::get, Router};
 use routes::genai_routes::create_genai_routes;
 use utils::db::connect_db;
+use utils::set_env::set_env_variable;
 
 use crate::routes::user_route::create_user_routes;
 use std::net::SocketAddr;
@@ -21,6 +22,7 @@ async fn main() {
     // Initialize Logger
     logger::startLogger();
     let _db_client = connect_db().await;
+    let _set_env = set_env_variable().await;
 
     let app = Router::new()
         .route("/test", get(handler))

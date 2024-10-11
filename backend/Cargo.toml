@@ -16,7 +16,7 @@ axum-server = "0.6.0"
 tokio = { version = "1.39.2", features = ["full"] }
 serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.122"
-# dotenv = "0.15"
+dotenv = "0.15"
 mongodb = { version = "3.0.1", features = ["sync"] }
 tower-http = { version = "0.5.0", features = ["fs"] }
 tower = { version = "0.4", features = ["full"] }
@@ -39,7 +39,6 @@ cookie = "0.18.0"
 bson = "2.13.0"
 sha2 = "0.10.8"
 hex = "0.4.3"
-cloudinary = "0.5.2"
+cloudinary = "0.6.0"
 regex = "1.10.6"
 genai = "0.1.10"
-dotenv = "0.15.0"

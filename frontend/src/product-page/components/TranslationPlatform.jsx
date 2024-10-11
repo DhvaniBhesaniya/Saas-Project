@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Button,
   TextField,
@@ -17,14 +17,16 @@ import {
   FormControl,
   InputLabel,
 } from "@mui/material";
-import { Upload, Send } from "@mui/icons-material";
+import { Upload, Send, Download, HighlightOff } from "@mui/icons-material";
 import { styled } from "@mui/material/styles";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getGenaiChat,
+  getGenaiDoc,
   getGenaiTranslatedText,
 } from "../../api-service/ApiRequest";
 import toast from "react-hot-toast";
+import { useUsage } from "../../contexts/UsageContext";
 
 // Custom components that don't have direct MUI equivalents
 const ScrollArea = ({ children, className }) => (
@@ -72,12 +74,17 @@ const TranslateButton = styled(Button)(({ theme }) => ({
 }));
 
 export default function TranslationPlatform() {
+  const { incrementUsage, isLimitReached } = useUsage();
+
   const [sourceLanguage, setSourceLanguage] = useState("en");
   const [targetLanguage, setTargetLanguage] = useState("es");
   const [translatedText, setTranslatedText] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [chatMessages, setChatMessages] = useState([]);
   const [tabValue, setTabValue] = useState(0);
+  const [file, setFile] = useState(null);
+  const [downloadUrl, setDownloadUrl] = useState(null); // Store file URL
+  const [downloadFileName, setDownloadFileName] = useState(""); // Store file name
 
   const languages = [
     { value: "en", label: "English" },
@@ -109,6 +116,7 @@ export default function TranslationPlatform() {
       // Handle successful login
       toast.success(data.message);
       setTranslatedText(data.data);
+      incrementUsage(); // Increment usage count on success
       // queryClient.fetchQuery({ queryKey: ["authUser"] });
       // navigate("/");
     },
@@ -131,10 +139,10 @@ export default function TranslationPlatform() {
     });
   };
 
-  const [chatformData, setChatFormData] = React.useState({
-    textmessage: "",
-    language: "Spanish",
-  });
+  // const [chatformData, setChatFormData] = React.useState({
+  //   textmessage: "",
+  //   language: "Spanish",
+  // });
 
   // useMutation for sending chat message and getting AI response
   const {
@@ -153,6 +161,7 @@ export default function TranslationPlatform() {
         ...prevMessages,
         { text: aiMessage, sender: "ai" },
       ]);
+      incrementUsage(); // Increment usage count on success
       toast.success(data.message);
     },
     onError: (error) => {
@@ -190,22 +199,102 @@ export default function TranslationPlatform() {
   };
 
   const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += 10;
-        setUploadProgress(progress);
-        if (progress >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setUploadProgress(0);
-            alert("Document translated successfully!");
-          }, 500);
-        }
-      }, 200);
+    const selectedFile = event.target.files[0];
+    if (selectedFile) {
+      setFile(selectedFile);
     }
   };
+
+  const handleUpload = async () => {
+    if (!file) {
+      toast("Please select a file.", {
+        icon: "📁",
+        // position: "top-right",
+      });
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File size exceeds 10MB.");
+      return;
+    }
+
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += 10;
+      setUploadProgress(progress);
+      if (progress >= 100) {
+        clearInterval(interval);
+      }
+    }, 200);
+
+    const selectedLanguage = languages.find(
+      (lang) => lang.value === targetLanguage
+    );
+
+    // Create FormData to send file and target language
+    const docformData = new FormData();
+    docformData.append("file", file);
+    docformData.append("language", selectedLanguage?.label || targetLanguage);
+
+    DocMutation(docformData);
+  };
+
+  const { mutate: DocMutation, isLoading: DocLoading } = useMutation({
+    mutationFn: async (docFormData) => {
+      return getGenaiDoc(docFormData);
+    },
+    onSuccess: (data) => {
+      // Handle success, create download URL
+      // if (uploadProgress === 100) {
+      const { blob, fileName } = data;
+      const url = window.URL.createObjectURL(blob); // Create URL for download
+      setDownloadUrl(url); // Set the download URL in state
+      setDownloadFileName(fileName); // Set the file name in state
+      setUploadProgress(0); // Reset progress bar after completion
+      incrementUsage(); // Increment usage count on success
+      toast.success("Document translated successfully!");
+      // }
+    },
+    onError: (error) => {
+      // Handle error, show a toast message
+      toast.error(`Error: ${error.message}`);
+    },
+  });
+
+  const handleDownload = () => {
+    if (downloadUrl && downloadFileName) {
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = downloadFileName;
+      a.click();
+    }
+  };
+  const handleClearFile = () => {
+    setTargetLanguage("es"); // Reset target language to 'es'
+    setFile(null); // Clear the selected file
+    setUploadProgress(0); // Reset progress bar after completion
+
+    // Clear the file input field by using its id
+    const fileInput = document.getElementById("fileUpload");
+    if (fileInput) {
+      fileInput.value = null; // Reset the file input
+    }
+
+    setDownloadUrl(null); // Optionally reset download URL if necessary
+    setDownloadFileName(""); // Optionally reset download file name if necessary
+  };
+
+  const handleChatClear = () => {
+    setChatMessages([]);
+  };
+
+  const { data: authUser } = useQuery({ queryKey: ["authUser"] });
+
+  useEffect(() => {
+    // queryClient.fetchQuery({ queryKey: ["authUser"] });
+    console.log(authUser);
+  }, [authUser]);
 
   return (
     <div className="container mx-auto p-4">
@@ -234,7 +323,7 @@ export default function TranslationPlatform() {
           <StyledCard>
             <CardHeader
               title="Text Translation"
-              subheader="Translate text between languages in real-time."
+              subheader="Translate text to selected language."
             />
             <CardContent>
               <Box
@@ -297,6 +386,7 @@ export default function TranslationPlatform() {
                 variant="contained"
                 onClick={handleTranslate}
                 sx={{ marginRight: 2 }}
+                disabled={isLimitReached} // Disable if limit reached
               >
                 {textLoading ? "Translating ..." : "Translate"}
               </TranslateButton>
@@ -327,13 +417,6 @@ export default function TranslationPlatform() {
                   mb: 2,
                 }}
               >
-                {/* <Select fullWidth label="Source Language">
-                  {languages.map((lang) => (
-                    <MenuItem key={lang.value} value={lang.value}>
-                      {lang.label}
-                    </MenuItem>
-                  ))}
-                </Select> */}
                 <FormControl fullWidth>
                   <InputLabel>Target Language</InputLabel>
                   <StyledSelect
@@ -350,12 +433,43 @@ export default function TranslationPlatform() {
                   </StyledSelect>
                 </FormControl>
               </Box>
+
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <Input type="file" onChange={handleFileUpload} />
-                <Button variant="contained" startIcon={<Upload />}>
+                <Input
+                  type="file"
+                  id="fileUpload"
+                  onChange={handleFileUpload}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={<Upload />}
+                  onClick={handleUpload}
+                  disabled={
+                    (uploadProgress > 0 && uploadProgress < 100) ||
+                    isLimitReached
+                  } // Disable if limit reached}
+                >
                   Upload
                 </Button>
+                {downloadUrl && (
+                  <Button
+                    variant="contained"
+                    startIcon={<Download />}
+                    onClick={handleDownload} // Trigger download when clicked
+                  >
+                    Download
+                  </Button>
+                )}
+
+                <Button
+                  variant="contained"
+                  startIcon={<HighlightOff />}
+                  onClick={handleClearFile} // Call handleClear on click
+                >
+                  Clear
+                </Button>
               </Box>
+
               {uploadProgress > 0 && (
                 <LinearProgress
                   variant="determinate"
@@ -366,74 +480,6 @@ export default function TranslationPlatform() {
             </CardContent>
           </Card>
         )}
-        {/* {tabValue === 2 && (
-          <Card>
-            <CardHeader
-              title="Chat with AI"
-              subheader="Chat with AI in any language."
-            />
-            <CardContent>
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 2,
-                  mb: 2,
-                }} 
-              >*/}
-        {/* <FormControl fullWidth>
-                  <InputLabel>Your Language</InputLabel>
-                  <Select fullWidth label="Your Language">
-                    {languages.map((lang) => (
-                      <MenuItem key={lang.value} value={lang.value}>
-                        {lang.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl> */}
-        {/* <FormControl fullWidth>
-                  <InputLabel>Ai Language</InputLabel>
-                  <StyledSelect
-                    value={targetLanguage}
-                    onChange={(e) => setTargetLanguage(e.target.value)}
-                    fullWidth
-                    label="Target Language"
-                  >
-                    {languages.map((lang) => (
-                      <MenuItem key={lang.value} value={lang.value}>
-                        {lang.label}
-                      </MenuItem>
-                    ))}
-                  </StyledSelect>
-                </FormControl>
-              </Box>
-              <ScrollArea className="h-[300px] w-full border rounded-md p-4 mb-4">
-                {chatMessages.map((msg, index) => (
-                  <div
-                    key={index}
-                    className={`mb-2 ${msg.sender === "user" ? "text-right" : "text-left"}`}
-                  >
-                    <span
-                      className={`inline-block p-2 rounded-lg ${msg.sender === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-                    >
-                      {msg.text}
-                    </span>
-                  </div>
-                ))}
-              </ScrollArea>
-              <form onSubmit={handleChatSubmit} className="flex gap-2">
-                <TextField
-                  name="message"
-                  placeholder="Type your message..."
-                  fullWidth
-                />
-                <Button type="submit" variant="contained" endIcon={<Send />}>
-                  Send
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        )} */}
 
         {tabValue === 2 && (
           <Card>
@@ -465,6 +511,13 @@ export default function TranslationPlatform() {
                     ))}
                   </StyledSelect>
                 </FormControl>
+                <TranslateButton
+                  variant="contained"
+                  onClick={handleChatClear}
+                  sx={{ width: 100 }}
+                >
+                  Clear
+                </TranslateButton>
               </Box>
 
               {/* Chat Display Area */}
@@ -482,14 +535,19 @@ export default function TranslationPlatform() {
                           }
                           src={
                             msg.sender === "user"
-                              ? "https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" // User image
-                              : "https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" // AI image
+                              ? authUser?.profileImg ||
+                                "/avatar-placeholder.png" // User image
+                              : "/chatbot.png" // AI image
                           }
                         />
                       </div>
                     </div>
                     <div className="chat-bubble break-words max-w-xs">
-                      {msg.text}
+                      {msg.sender === "ai" && ChatLoading ? (
+                        <span className="loading loading-dots loading-md"></span>
+                      ) : (
+                        msg.text
+                      )}
                     </div>
                   </div>
                 ))}
@@ -512,7 +570,12 @@ export default function TranslationPlatform() {
                     },
                   }}
                 />
-                <Button type="submit" variant="contained" endIcon={<Send />}>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  endIcon={<Send />}
+                  disabled={isLimitReached} // Disable if limit reached
+                >
                   Send
                 </Button>
               </form>
@@ -523,6 +586,119 @@ export default function TranslationPlatform() {
     </div>
   );
 }
+
+// const handleUpload = async () => {
+//   if (!file) {
+//     alert("Please select a file.");
+//     return;
+//   }
+
+//   if (file.size > 10 * 1024 * 1024) {
+//     alert("File size exceeds 10MB.");
+//     return;
+//   }
+
+//   let progress = 0;
+//   const interval = setInterval(() => {
+//     progress += 10;
+//     setUploadProgress(progress);
+//     if (progress >= 100) {
+//       clearInterval(interval);
+//     }
+//   }, 200);
+
+//   // Prepare chat data for the mutation
+//   const selectedLanguage = languages.find(
+//     (lang) => lang.value === targetLanguage
+//   );
+
+//   // Create FormData to send file and target language
+//   const formData = new FormData();
+//   formData.append("file", file);
+//   formData.append("language", selectedLanguage?.label || targetLanguage);
+
+//   try {
+//     const response = await fetch("/api/genai/doc", {
+//       method: "POST",
+//       body: formData,
+//     });
+
+//     if (response.ok) {
+//       const blob = await response.blob(); // Get the translated file as a blob
+//       const url = window.URL.createObjectURL(blob); // Create URL for download
+//       const a = document.createElement("a");
+//       a.href = url;
+//       a.download = file.name; // Same file name, but content is translated
+//       a.click();
+//       toast.success("Document translated successfully!");
+//     } else {
+//       const errorData = await response.json();
+//       alert(`Error: ${errorData.message}`);
+//     }
+//   } catch (error) {
+//     console.error("Upload error:", error);
+//     alert("Failed to upload the document.");
+//   }
+
+//   setUploadProgress(0); // Reset progress bar after completion
+// };
+
+// {tabValue === 1 && (
+//   <Card>
+//     <CardHeader
+//       title="Document Translation"
+//       subheader="Upload and translate entire documents (.doc and .txt only)"
+//     />
+//     <CardContent>
+//       <Box
+//         sx={{
+//           display: "grid",
+//           gridTemplateColumns: "1fr 1fr",
+//           gap: 2,
+//           mb: 2,
+//         }}
+//       >
+{
+  /* <Select fullWidth label="Source Language">
+          {languages.map((lang) => (
+            <MenuItem key={lang.value} value={lang.value}>
+              {lang.label}
+            </MenuItem>
+          ))}
+        </Select> */
+}
+//         <FormControl fullWidth>
+//           <InputLabel>Target Language</InputLabel>
+//           <StyledSelect
+//             value={targetLanguage}
+//             onChange={(e) => setTargetLanguage(e.target.value)}
+//             fullWidth
+//             label="Target Language"
+//           >
+//             {languages.map((lang) => (
+//               <MenuItem key={lang.value} value={lang.value}>
+//                 {lang.label}
+//               </MenuItem>
+//             ))}
+//           </StyledSelect>
+//         </FormControl>
+//       </Box>
+//       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+//         <Input type="file" onChange={handleFileUpload} />
+//         <Button variant="contained" startIcon={<Upload />}>
+//           Upload
+//         </Button>
+//       </Box>
+//       {uploadProgress > 0 && (
+//         <LinearProgress
+//           variant="determinate"
+//           value={uploadProgress}
+//           sx={{ mt: 2 }}
+//         />
+//       )}
+//     </CardContent>
+//   </Card>
+// )}
 
 // <Card>
 // <CardHeader

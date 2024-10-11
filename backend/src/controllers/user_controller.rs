@@ -68,7 +68,7 @@ pub struct UpdateUserData {
     pub new_password: Option<String>,
     #[serde(rename = "profileImg")]
     pub profile_img: Option<String>,
-    pub tries_used: Option<u32>,
+    pub tries_used: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -377,6 +377,11 @@ pub async fn update_user_data(
         }
     }
 
+    // Update tries_used if provided
+    if let Some(tries_used) = form.tries_used {
+        update_fields.insert("usage.tries_used", tries_used);
+    }
+
     // Update profile image if provided
     if let Some(profile_img) = &form.profile_img {
         let update_profile_img_result = match upload_image_to_cloudinary(profile_img).await {
@@ -411,9 +416,7 @@ pub async fn update_user_data(
         } else if current.is_empty() || new.is_empty() {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(
-                    json!({ "success": false, "message": "Any password fields cannot be empty" }),
-                ),
+                Json(json!({ "success": false, "message": "Any password fields cannot be empty" })),
             );
         } else {
             let stored_password = user_doc.get_str("password").unwrap();
@@ -468,19 +471,26 @@ pub async fn upload_image_to_cloudinary(profile_img: &str) -> Result<String, Str
     match upload_result {
         // If successful, return the secure URL
         Ok(result) => {
-            if let UploadResult::Success(response) = result {
-               
-                Ok(response.secure_url)
-            } else {
-                
-                Err("Upload failed, but no valid URL returned.".to_string())
+            // Match the result to see if it contains the expected variant
+            match result {
+                UploadResult::Response(_) => {
+                    todo!()
+                }
+                UploadResult::ResponseWithImageMetadata(response) => {
+                    // If the result contains the image metadata, return the secure URL
+                    Ok(response.secure_url)
+                }
+                UploadResult::Error(error) => {
+                    // Handle the case where there is an error in the upload
+                    Err(format!("Upload error: {:?}", error))
+                }
             }
         }
         // Handle errors
         Err(e) => {
             // Attempt to parse and extract the secure_url from the error message
             let error_message = format!("{:?}", e);
-            log::error!("{}",error_message);
+            log::error!("{}", error_message);
 
             // Use regex to find the secure_url in the error message
             let re = Regex::new(r#""secure_url":"(https://[^"]+)""#).unwrap();
