@@ -1,5 +1,5 @@
 // productPage/context/UsageContext.jsx
-import React, { createContext, useState, useContext } from "react";
+import React, { createContext, useState, useContext, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import useUpdateUserProfile from "../api-service/ApiRequest";
 
@@ -14,12 +14,34 @@ export const UsageProvider = ({ children }) => {
   const { data: authUser } = useQuery({ queryKey: ["authUser"] });
   console.log(authUser);
   const { updateProfile } = useUpdateUserProfile();
-  const initialUsageCount =
-    authUser && authUser.usage?.tries_used ? authUser.usage.tries_used : 0;
+
+  //   const initialUsageCount =
+  //     authUser && authUser.usage?.tries_used ? authUser.usage.tries_used : 0;
+
+  //   const maxUsage = authUser ? authUser.usage?.max_tries || 10 : 5;
+
+  //   const [usageCount, setUsageCount] = useState(initialUsageCount);
+
+  // Fetch usageCount from localStorage for non-authenticated users
+  const getLocalStorageUsageCount = () => {
+    const storedUsage = localStorage.getItem("usageCount");
+    return storedUsage ? parseInt(storedUsage, 10) : 0;
+  };
+
+  const initialUsageCount = authUser
+    ? authUser.usage?.tries_used || 0
+    : getLocalStorageUsageCount(); // Use localStorage for non-auth users
 
   const maxUsage = authUser ? authUser.usage?.max_tries || 10 : 5;
 
   const [usageCount, setUsageCount] = useState(initialUsageCount);
+
+  // Sync usageCount to localStorage for non-authenticated users
+  useEffect(() => {
+    if (!authUser) {
+      localStorage.setItem('usageCount', usageCount);
+    }
+  }, [usageCount, authUser]);
 
   // Handler to update the usage count
   const incrementUsage = () => {
@@ -30,6 +52,8 @@ export const UsageProvider = ({ children }) => {
         updateProfile({
           tries_used: authUser.usage.tries_used,
         });
+      } else {
+        localStorage.setItem('usageCount', usageCount + 1); // Update localStorage for non-auth users
       }
     }
   };

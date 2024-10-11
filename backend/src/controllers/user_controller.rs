@@ -466,7 +466,7 @@ pub async fn upload_image_to_cloudinary(profile_img: &str) -> Result<String, Str
         .image(Source::DataUrl(profile_img.into()), &options)
         .await;
 
-    // println!("Upload result :: , {:?}", upload_result);
+    // log::info!("Upload result :: , {:?}", upload_result);
 
     match upload_result {
         // If successful, return the secure URL
