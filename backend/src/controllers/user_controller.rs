@@ -138,14 +138,14 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
         "login_type": "email", // Email login
         "profileImg": None::<Bson>, // Optional field
         "subscription_plan": {
-            "plan_type": "free", // Default to "free"
+            "plan_type": "Basic", // Default to "Basic"
             "start_date":BsonDateTime::now().to_string(),
             "end_date": None::<Bson>, // None as optional date
             "payment_status": None::<Bson>
         },
         "usage": {
             "tries_used": 0, // Start with 0 tries used
-            "max_tries": 10,  // Free plan allows 10 tries
+            "max_tries": 10,  // Basic plan allows 10 tries
         },
         "AccDeleted": false,
         "created_at": BsonDateTime::now().to_string(),

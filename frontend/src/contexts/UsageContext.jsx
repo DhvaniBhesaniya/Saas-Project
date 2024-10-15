@@ -1,6 +1,6 @@
 // productPage/context/UsageContext.jsx
 import React, { createContext, useState, useContext, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import useUpdateUserProfile from "../api-service/ApiRequest";
 
 // Create the context
@@ -11,6 +11,7 @@ export const useUsage = () => useContext(UsageContext);
 
 // Provider component
 export const UsageProvider = ({ children }) => {
+  const queryClient = useQueryClient();
   const { data: authUser } = useQuery({ queryKey: ["authUser"] });
   console.log(authUser);
   const { updateProfile } = useUpdateUserProfile();
@@ -41,6 +42,8 @@ export const UsageProvider = ({ children }) => {
     if (!authUser) {
       localStorage.setItem('usageCount', usageCount);
     }
+    queryClient.fetchQuery({ queryKey: ["authUser"] });
+
   }, [usageCount, authUser]);
 
   // Handler to update the usage count

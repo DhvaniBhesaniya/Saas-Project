@@ -23,12 +23,29 @@ pub struct User {
     pub subscription_plan: SubscriptionPlan, // Plan details
     pub usage: Usage,                        // User's usage (tries)
 
+    pub activity_log: Vec<ActivityLog>, // Activity log of user actions
+    pub billing_history: Vec<BillingHistory>, // Billing history for the user
+
     pub created_at: DateTime<Utc>, // Account creation timestamp
     pub updated_at: DateTime<Utc>, // Last update timestamp
     #[serde(rename = "profileImg")]
     pub profile_img: Option<String>,
     #[serde(rename = "AccDeleted")]
     pub acc_deleted: bool,
+}
+
+// Define the activity log model
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ActivityLog {
+    pub event: String, // Description of the activity, e.g., "Login from Chrome on Windows"
+    pub timestamp: DateTime<Utc>, // Timestamp of the activity
+}
+
+// Define the billing history model
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BillingHistory {
+    pub invoice_id: String,     // Invoice number, e.g., "Invoice #1234"
+    pub paid_at: DateTime<Utc>, // Payment date and time
 }
 
 // Define the subscription plan model      //#[serde(deserialize_with = "deserialize_from_str")]

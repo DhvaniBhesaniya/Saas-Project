@@ -1,5 +1,6 @@
 use axum::{routing::get, Router};
 use routes::genai_routes::create_genai_routes;
+use routes::subscription_routes::create_subscription_routes;
 use utils::db::connect_db;
 use utils::set_env::set_env_variable;
 
@@ -27,7 +28,8 @@ async fn main() {
     let app = Router::new()
         .route("/test", get(handler))
         .merge(create_user_routes())
-        .merge(create_genai_routes());
+        .merge(create_genai_routes())
+        .merge(create_subscription_routes());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], gett("port")));
 
