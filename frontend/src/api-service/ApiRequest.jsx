@@ -3,7 +3,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
-
 // // ApiRequest.jsx
 
 // // Helper function to get token from localStorage and set headers
@@ -82,50 +81,48 @@ export const fetchAuthUser = async () => {
   }
 };
 
- const useUpdateUserProfile = () => {
+const useUpdateUserProfile = () => {
   const queryClient = useQueryClient();
 
-  const { mutateAsync: updateProfile, isPending: isUpdatingProfile, error: updateError } =
-    useMutation({
-      mutationFn: async (formData) => {
-        try {
-          console.log(formData);
-          const res = await fetch(`/api/user/updateuser`, {
-            method: "POST",
-            headers: {
-              "Content-Type": " application/json",
-            },
-            body: JSON.stringify(formData),
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(data.error || "Something went wrong");
-          }
-          return data;
-        } catch (error) {
-          throw new Error(error.message);
+  const {
+    mutateAsync: updateProfile,
+    isPending: isUpdatingProfile,
+    error: updateError,
+  } = useMutation({
+    mutationFn: async (formData) => {
+      try {
+        console.log(formData);
+        const res = await fetch(`/api/user/updateuser`, {
+          method: "POST",
+          headers: {
+            "Content-Type": " application/json",
+          },
+          body: JSON.stringify(formData),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Something went wrong");
         }
-      },
-      onSuccess: () => {
-        toast.success(" Updated successfully");
-        Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["authUser"] }),
-        ]);
-      },
-      onError: (error) => {
-        toast.error(error.message);
-      },
-    });
+        return data;
+      } catch (error) {
+        throw new Error(error.message);
+      }
+    },
+    onSuccess: () => {
+      toast.success(" Updated successfully");
+      Promise.all([queryClient.invalidateQueries({ queryKey: ["authUser"] })]);
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
 
-  return { updateProfile, isUpdatingProfile ,updateError};
+  return { updateProfile, isUpdatingProfile, updateError };
 };
 
- export default useUpdateUserProfile;
-
-
+export default useUpdateUserProfile;
 
 // Gen ai api request
-
 
 export const getGenaiTranslatedText = async (textformData) => {
   try {
@@ -192,3 +189,43 @@ export const getGenaiDoc = async (docFormData) => {
   return { blob, fileName };
 };
 
+export const Subscribe_plan = async (planid) => {
+  try {
+    const response = await fetch("/api/subscription/buyplan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ "price_id": planid }),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(responseData.message || "Failed to Subscribe Plan");
+    }
+
+    return responseData;
+  } catch (error) {
+    console.error("Error fetching subscribe-to-Plan:", error);
+    throw error;
+  }
+};
+export const Verify_plan = async (sessionid) => {
+  try {
+    const response = await fetch("/api/subscription/verifyplan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ "session_id": sessionid }),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(responseData.message || "Failed to Verify session");
+    }
+
+    return responseData;
+  } catch (error) {
+    console.error("Error fetching verify result:", error);
+    throw error;
+  }
+};

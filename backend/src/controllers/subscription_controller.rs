@@ -94,7 +94,7 @@ pub async fn buy_plan(
     // If the price doesn't exist, return an error
     if matched_price.is_none() {
         return (
-            StatusCode::OK,
+            StatusCode::BAD_REQUEST,
             Json(json!({ "success": false, "message": "Plan doesn't exist" })),
         );
     }
@@ -165,6 +165,7 @@ async fn create_stripe_session(
     checkout_session.url.unwrap()
 }
 
+
 pub async fn verify_plan(
     Extension(claims): Extension<Claimss>, // Assuming 'claims' contains the user ID
     Json(req): Json<VerifyOrderRequest>,
@@ -189,7 +190,7 @@ pub async fn verify_plan(
         Ok(Some(doc)) => doc,
         Ok(None) => {
             return (
-                StatusCode::OK,
+                StatusCode::BAD_REQUEST,
                 Json(json!({ "success": false, "message": "User not found" })),
             )
         }
@@ -251,7 +252,7 @@ pub async fn verify_plan(
 
     // If the status and payment_status do not match the expected values
     (
-        StatusCode::OK,
+        StatusCode::BAD_REQUEST,
         Json(json!({ "success": false, "message": "Plan verification unsuccessful" })),
     )
 }

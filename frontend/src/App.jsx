@@ -6,6 +6,7 @@ import ProductPage from "./product-page/ProductPage";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuthUser } from "./api-service/ApiRequest";
 import { Toaster } from "react-hot-toast";
+import Verify from "./common-comp/Verify";
 
 function App() {
   const { data: authUser } = useQuery({
@@ -36,6 +37,7 @@ function App() {
       />
       <Route path="/blog" element={<Blog />} />
       <Route path="/product" element={<ProductPage />} />
+      <Route path="/verify" element={<Verify />} />
     </Routes>
     <Toaster />
     </>

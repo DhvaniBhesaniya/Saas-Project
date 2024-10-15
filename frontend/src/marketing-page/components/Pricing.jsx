@@ -17,6 +17,9 @@ import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { Subscribe_plan } from "../../api-service/ApiRequest";
 
 const AnimatedCard = styled(Card)(({ theme }) => ({
   transition: "transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out",
@@ -108,7 +111,36 @@ const tiers = [
 export default function Pricing() {
   const [hoveredTier, setHoveredTier] = React.useState(null);
   const [billingCycle, setBillingCycle] = React.useState("monthly");
+  const { data: authUser } = useQuery({
+    queryKey: ["authUser"],
+  });
+  // console.log(authUser);
 
+  const { mutate: buy_plan, isPending: textLoading } = useMutation({
+    mutationFn: async (planId) => {
+      return Subscribe_plan(planId); // Use the loginUser API function
+    },
+    onSuccess: (data) => {
+      // Handle successful login
+      toast.success(data.sucess);
+      window.location.href = data.session_url;
+    },
+    onError: (error) => {
+      console.error("Error in response :", error);
+    },
+  });
+
+  // Handle button click to get price ID
+  const handleButtonClick = (tier) => {
+    if (tier.title === "Pro" || tier.title === "Enterprise") {
+      const planId =
+        billingCycle === "monthly" ? tier.plan_id_monthly : tier.plan_id_yearly;
+      toast.success(
+        `title : ${tier.title}, mode : ${billingCycle}, Selected Plan ID: ${planId}`
+      );
+      buy_plan(planId);
+    }
+  };
   const handleBillingCycleChange = (event, newBillingCycle) => {
     if (newBillingCycle !== null) {
       setBillingCycle(newBillingCycle);
@@ -156,7 +188,7 @@ export default function Pricing() {
             mb: 4,
             display: "flex",
             justifyContent: "center",
-            maxWidth: "180px", // Limits the width to fit around the two buttons
+            maxWidth: "176px", // Limits the width to fit around the two buttons
             mx: "auto", // Centers the BillingToggle horizontally
             padding: "4px", // Adjusts padding to make it more compact
           }}
@@ -297,6 +329,7 @@ export default function Pricing() {
                     variant={tier.buttonVariant}
                     color={tier.buttonColor}
                     endIcon={<ArrowUpwardIcon />}
+                    onClick={() => handleButtonClick(tier)}
                   >
                     {tier.buttonText}
                   </Button>
