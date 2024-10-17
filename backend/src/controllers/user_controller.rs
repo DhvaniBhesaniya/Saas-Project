@@ -13,7 +13,7 @@
 
 use crate::configration::gett;
 use crate::middleware::auth::Claimss;
-use crate::models::user_model::{SubscriptionPlan, Usage, User};
+use crate::models::user_model::{Usage, User};
 use crate::utils::generate_token::{
     generate_token_and_set_cookie, generate_token_and_unset_cookie,
 };
@@ -71,18 +71,18 @@ pub struct UpdateUserData {
     pub tries_used: Option<i32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UserResponse {
-    #[serde(rename = "_id")]
-    pub id: String, // User's ID
-    pub name: String,                        // User's name
-    pub email: String,                       // User's email
-    pub google_id: Option<String>,           // Optional google_id
-    pub login_type: Option<String>,          // Optional login type
-    pub profile_img: Option<String>,         // Optional profile image
-    pub subscription_plan: SubscriptionPlan, // User's subscription plan details
-    pub usage: Usage,                        // User's usage data
-}
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub struct UserResponse {
+//     #[serde(rename = "_id")]
+//     pub id: String, // User's ID
+//     pub name: String,                        // User's name
+//     pub email: String,                       // User's email
+//     pub google_id: Option<String>,           // Optional google_id
+//     pub login_type: Option<String>,          // Optional login type
+//     pub profile_img: Option<String>,         // Optional profile image
+//     pub subscription_plan: SubscriptionPlan, // User's subscription plan details
+//     pub usage: Usage,                        // User's usage data
+// }
 
 pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
     let collection = User::get_user_collection().await;
@@ -137,16 +137,13 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
         "google_id": None::<Bson>, // Not a Google login
         "login_type": "email", // Email login
         "profileImg": None::<Bson>, // Optional field
-        "subscription_plan": {
-            "plan_type": "Basic", // Default to "Basic"
-            "start_date":BsonDateTime::now().to_string(),
-            "end_date": None::<Bson>, // None as optional date
-            "payment_status": None::<Bson>
-        },
+        "subscription_plan": None::<Bson>,
         "usage": {
             "tries_used": 0, // Start with 0 tries used
             "max_tries": 10,  // Basic plan allows 10 tries
         },
+        "activity_log": None::<Bson>,
+        "billing_history":None::<Bson>,
         "AccDeleted": false,
         "created_at": BsonDateTime::now().to_string(),
         "updated_at": BsonDateTime::now().to_string()
@@ -180,7 +177,7 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
 }
 
 pub async fn login_user(Json(payload): Json<LoginUser>) -> Response {
-    log::info!("accessing login user function.");
+    // log::info!("accessing login user function.");
     let collection = User::get_user_collection().await;
 
     // Checking if the user exists

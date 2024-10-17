@@ -17,7 +17,7 @@ tokio = { version = "1.39.2", features = ["full"] }
 serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.122"
 mongodb = { version = "3.0.1", features = ["sync"] }
-tower-http = { version = "0.5.0", features = ["fs"] }
+tower-http = { version = "0.5.0", features = ["fs","cors"] }
 tower = { version = "0.4", features = ["full"] }
 jsonwebtoken = "9.3.0"                                # For JWT handling
 # multipart = "0.17.1"                                  # For handling multipart forms

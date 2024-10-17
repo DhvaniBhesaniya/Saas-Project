@@ -20,8 +20,8 @@ pub struct User {
     pub google_id: Option<String>, // Google ID for Google login
     pub login_type: String,        // "google" or "email"
 
-    pub subscription_plan: SubscriptionPlan, // Plan details
-    pub usage: Usage,                        // User's usage (tries)
+    pub subscription_id: Option<ObjectId>, // Plan details
+    pub usage: Usage,                      // User's usage (tries)
 
     pub activity_log: Vec<ActivityLog>, // Activity log of user actions
     pub billing_history: Vec<BillingHistory>, // Billing history for the user
@@ -32,6 +32,13 @@ pub struct User {
     pub profile_img: Option<String>,
     #[serde(rename = "AccDeleted")]
     pub acc_deleted: bool,
+}
+
+// Define the usage model
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Usage {
+    pub tries_used: i32, // Number of tries used
+    pub max_tries: i32,  // Max tries allowed
 }
 
 // Define the activity log model
@@ -46,22 +53,6 @@ pub struct ActivityLog {
 pub struct BillingHistory {
     pub invoice_id: String,     // Invoice number, e.g., "Invoice #1234"
     pub paid_at: DateTime<Utc>, // Payment date and time
-}
-
-// Define the subscription plan model      //#[serde(deserialize_with = "deserialize_from_str")]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SubscriptionPlan {
-    pub plan_type: String,                 // "free", "custom", "recommended"
-    pub start_date: Option<DateTime<Utc>>, // Subscription start date
-    pub end_date: Option<DateTime<Utc>>,   // Subscription end date
-    pub payment_status: Option<String>,    // "active", "pending", "canceled"
-}
-
-// Define the usage model
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Usage {
-    pub tries_used: i32, // Number of tries used
-    pub max_tries: i32,  // Max tries allowed
 }
 
 impl User {

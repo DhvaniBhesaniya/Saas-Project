@@ -1,6 +1,8 @@
 use axum::{routing::get, Router};
+use middleware::cors::cors_layer;
 use routes::genai_routes::create_genai_routes;
 use routes::subscription_routes::create_subscription_routes;
+use tower::ServiceBuilder;
 use utils::db::connect_db;
 use utils::set_env::set_env_variable;
 
@@ -29,7 +31,8 @@ async fn main() {
         .route("/test", get(handler))
         .merge(create_user_routes())
         .merge(create_genai_routes())
-        .merge(create_subscription_routes());
+        .merge(create_subscription_routes())
+        .layer(ServiceBuilder::new().layer(cors_layer()));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], gett("port")));
 

@@ -50,8 +50,8 @@ export const formatPostDate = (createdAt) => {
 
 export const formatMemberSinceDate = (createdAt) => {
   if (!createdAt) {
-    // If createdAt is undefined, set a default date
-    createdAt = "2024-09-30 05:57:40.705 +00:00:00";
+    // If createdAt is undefined, set a default date to January 1st 12:00 AM
+    createdAt = "2024-01-01 00:00:00.000 +00:00:00";
   }
 
   // First, clean up the createdAt string to a more standard ISO format
