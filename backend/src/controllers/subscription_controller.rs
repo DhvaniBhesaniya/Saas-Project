@@ -1,6 +1,7 @@
-use crate::configration::gett;
 use crate::middleware::auth::Claimss;
+use crate::models::subscription_model::{PaymentDetails, PlanDetails};
 use crate::models::user_model::User;
+use crate::{configration::gett, models::subscription_model::SubscriptionPlan};
 use axum::{
     extract::{Extension, Json},
     http::StatusCode,
@@ -8,14 +9,20 @@ use axum::{
 };
 
 use bson::Bson;
-use chrono::{DateTime, Utc};
-use mongodb::bson::{self, doc, oid::ObjectId, Document};
+use chrono::{DateTime, TimeZone, Utc};
+use mongodb::{
+    bson::{self, doc, oid::ObjectId, Document},
+    change_stream::session,
+};
 // use mongodb::options::{FindOneAndUpdateOptions, ReturnDocument};
 // use mongodb::Collection;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use stripe::{
-  CheckoutSession, CheckoutSessionPaymentStatus, CheckoutSessionStatus, Client, CreateCheckoutSession, CreateCheckoutSessionLineItems, CreateCheckoutSessionPaymentMethodTypes, CustomerId, IdOrCreate, ListCheckoutSessions, ListCheckoutSessionsCustomerDetails, ListPrices, ListSubscriptionItems, ListSubscriptions, Price, Subscription, SubscriptionId
+    CheckoutSession, CheckoutSessionPaymentStatus, CheckoutSessionStatus, Client,
+    CreateCheckoutSession, CreateCheckoutSessionLineItems, CreateCheckoutSessionPaymentMethodTypes,
+    CustomerId, IdOrCreate, ListCheckoutSessions, ListCheckoutSessionsCustomerDetails, ListPrices,
+    ListSubscriptionItems, ListSubscriptions, Price, Subscription, SubscriptionId,
 };
 
 #[derive(Debug, Deserialize)]
@@ -172,7 +179,7 @@ pub async fn verify_plan(
     let stripe_key = gett::<String>("stripe_secret_key");
     let client = Client::new(stripe_key);
 
-    let collection = User::get_user_collection().await;
+    let user_collection = User::get_user_collection().await;
     let user_id = match ObjectId::parse_str(&claims.id) {
         Ok(id) => id,
         Err(_) => {
@@ -185,7 +192,7 @@ pub async fn verify_plan(
 
     // Get the user's document
     let filter = doc! { "_id": user_id };
-    let user_doc = match collection.find_one(filter.clone()).await {
+    let _user_doc = match user_collection.find_one(filter.clone()).await {
         Ok(Some(doc)) => doc,
         Ok(None) => {
             return (
@@ -201,176 +208,243 @@ pub async fn verify_plan(
         }
     };
     // Assuming user_doc is a BSON document, extract the `profileImg` field
-    let user_email = user_doc.get("email").and_then(|v| match v {
-        Bson::String(e) => Some(e.clone()),
-        _ => None,
-    });
-
-    // Example of using ListProducts with specific parameters
-    let list_price_params = ListCheckoutSessions {
-        customer_details: Some(ListCheckoutSessionsCustomerDetails {
-            email: user_email.unwrap(),
-        }),
-        status: Some(CheckoutSessionStatus::Complete),
-        ..Default::default() // Fill in other fields as default
-    };
-
-    let session_list = CheckoutSession::list(&client, &list_price_params)
-        .await
-        .unwrap();
-
-    // log::info!("checkout session data : {:#?}", session_list);
+    // let _user_email = user_doc.get("email").and_then(|v| match v {
+    //     Bson::String(e) => Some(e.clone()),
+    //     _ => None,
+    // });
 
     let session_id = req.session_id.clone();
 
-    // Find the session with the matching session ID
-    let matched_session = session_list
-        .data
-        .iter()
-        .find(|s| s.id.to_string() == session_id);
+    let checkout_session =
+        get_checkout_session_data_and_update(&client, session_id, user_id, None).await;
 
-    // If no matching session is found, return an error
-    if matched_session.is_none() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "message": "No session found" })),
-        );
-    }
-    // http://localhost:5170/verify?success=true&session_id=cs_test_a1Owo7ibMsTCOjMWA0kMwUr8jAVqE539zKHPOCt7KtBK5oCb5XgQzW4xh7 
-    //    log::info!("checkout session data : {:#?}", matched_session.unwrap());
-    
-    
+    match checkout_session {
+        Ok(id) => {
+            let mut update_fields = Document::new();
+            update_fields.insert("subscription_id", id.to_hex());
 
-
-//  subscription data
-
-//    // Example of using ListProducts with specific parameters
-//    let list_subscription_params = ListSubscriptions {
-    //     customer:Some("cus_R2wKbdOIQC2vnI".to_string()),
-    //     ..Default::default() // Fill in other fields as default
-// };
-// sub_1QAqRtRtqMxXmkr4l4tkiEZC
-
-let subscription_data = Subscription::retrieve(&client, &"sub_1QAqRtRtqMxXmkr4l4tkiEZC".parse().unwrap(), &[]).await.unwrap();
-
-   log::info!("subscription data : {:#?}", subscription_data);
-
-
-
-
-    // Check if the status is 'complete' and payment_status is 'paid'
-    if matched_session.unwrap().status == Some(CheckoutSessionStatus::Complete)
-        && matched_session.unwrap().payment_status == CheckoutSessionPaymentStatus::Paid
-    {
-        // Plan verified successfully
-        return (
-            StatusCode::OK,
-            Json(json!({ "success": true, "message": "Plan verified successfully" })),
-        );
-    }
-
-    // If the status and payment_status do not match the expected values
-    (
-        StatusCode::BAD_REQUEST,
-        Json(json!({ "success": false, "message": "Plan verification unsuccessful" })),
-    )
+            // Update the user document in MongoDB
+            if !update_fields.is_empty() {
+                let update_doc = doc! { "$set": update_fields };
+                if user_collection
+                    .update_one(filter, update_doc)
+                    .await
+                    .is_err()
+                {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(
+                            json!({ "success": false, "message": "Failed to update user data while veriying." }),
+                        ),
+                    );
+                }
+            }
+            return (
+                StatusCode::OK,
+                Json(json!({ "success": true, "message": "Plan verified successfully" })),
+            );
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "success": false, "message": e })),
+            )
+        }
+    };
 }
 
-// id: CheckoutSessionId("cs_test_a1Q5f25QPXh6Bucg1rsSIVvqRcdEgjFbu0SohrTWYIs5SYlRJI4jbwuc2p")
-// amount_total: Some(9999,  ),
-//     cancel_url: Some("http://localhost:5170/verify?success=false&session_id={CHECKOUT_SESSION_ID}",),
-//     created: 1728998391,
-//     currency: Some(USD,
-//     ),
-//     customer: Some(Id(CustomerId("cus_R2F9C0q8VotyO2",
-//     ),
-//     customer_details: Some(PaymentPagesCheckoutSessionCustomerDetails{
-//       address: Some(Address{
-//         city: None,
-//         country: Some("IN",
-//         ),
-//         line1: None,
-//         line2: None,
-//         postal_code: None,
-//         state: None,
+pub async fn get_checkout_session_data_and_update(
+    client: &Client,
+    session_id: String,
+    user_id: ObjectId,
+    _user_email: Option<String>,
+) -> Result<ObjectId, String> {
+    // method 1:  gett session list and find it
 
-//       },
-//       ),
-//       email: Some("user0@gmail.com",
-//       ),
-//       name: Some("User2",
-//       ),
-//       phone: None,
-//       tax_exempt: Some(None,
-//       ),
-//       tax_ids: Some([
+    // // Example of using ListProducts with specific parameters
+    // let list_price_params = ListCheckoutSessions {
+    //     customer_details: Some(ListCheckoutSessionsCustomerDetails {
+    //         email: user_email.unwrap(),
+    //     }),
+    //     status: Some(CheckoutSessionStatus::Complete),
+    //     ..Default::default() // Fill in other fields as default
+    // };
 
-//       ],
-//       ),
+    // let session_list = CheckoutSession::list(&client, &list_price_params)
+    //     .await
+    //     .unwrap();
 
-//     },
-//     ),
-//     customer_email: Some("user0@gmail.com",
-//     ),
-//     expires_at: 1729084791,
-//     invoice: Some(Id(InvoiceId("in_1QAAfQRtqMxXmkr406dPjAA9",
-//     ),
-//     mode: Subscription,
+    // // Find the session with the matching session ID
+    // let matched_session = session_list
+    //     .data
+    //     .iter()
+    //     .find(|s| s.id.to_string() == session_id);
 
-// subscription: Some(Id(SubscriptionId("sub_1QAAfQRtqMxXmkr4RO9vImxf",
-//     ),
-//     payment_method_options: Some(CheckoutSessionPaymentMethodOptions{
-//       acss_debit: None,
-//       affirm: None,
-//       afterpay_clearpay: None,
-//       alipay: None,
-//       au_becs_debit: None,
-//       bacs_debit: None,
-//       bancontact: None,
-//       boleto: None,
-//       card: Some(CheckoutCardPaymentMethodOptions{
-//         installments: None,
-//         setup_future_usage: None,
-//         statement_descriptor_suffix_kana: None,
-//         statement_descriptor_suffix_kanji: None,
+    // // If no matching session is found, return an error
+    // if matched_session.is_none() {
+    //     return Err("no matching session found".to_string());
+    // }
+    //       // Check if the status is 'complete' and payment_status is 'paid'
+    //     if matched_session.unwrap().status == Some(CheckoutSessionStatus::Complete)
+    //     && matched_session.unwrap().payment_status == CheckoutSessionPaymentStatus::Paid
+    // {
+    //     // Plan verified successfully
+    //     return (
+    //         StatusCode::OK,
+    //         Json(json!({ "success": true, "message": "Plan verified successfully" })),
+    //     );
+    // }
+    //-------------------------------------------------------------------------------
+    // method 2: get the session id and retrive its data.
+    let checkout_session_data =
+        CheckoutSession::retrieve(&client, &session_id.parse().unwrap(), &[])
+            .await
+            .map_err(|err| err.to_string())?;
 
-//       },
-//       ),
-//       cashapp: None,
-//       customer_balance: None,
-//       eps: None,
-//       fpx: None,
-//       giropay: None,
-//       grabpay: None,
-//       ideal: None,
-//       klarna: None,
-//       konbini: None,
-//       link: None,
-//       oxxo: None,
-//       p24: None,
-//       paynow: None,
-//       paypal: None,
-//       pix: None,
-//       revolut_pay: None,
-//       sepa_debit: None,
-//       sofort: None,
-//       swish: None,
-//       us_bank_account: None,
+    // log::info!("checkout session data : {:#?}", checkout_session_data);
 
-//     },
-//     ),
-//     payment_method_types: [
-//       "card",
-//       "paypal",
+    // Check if the status is 'complete' and payment_status is 'paid'
+    if checkout_session_data.status == Some(CheckoutSessionStatus::Complete)
+        && checkout_session_data.payment_status == CheckoutSessionPaymentStatus::Paid
+    {
+        let customer_id = checkout_session_data
+            .to_owned()
+            .customer
+            .unwrap()
+            .id()
+            .as_str()
+            .to_string();
 
-//     ],
-//     payment_status: Paid,
-//     status: Some(Complete,
-//     ),
-//     success_url: Some("http://localhost:5170/verify?success=true&session_id={CHECKOUT_SESSION_ID}",
-//     ),
+        let payment_method = match checkout_session_data
+            .payment_method_options
+            .unwrap()
+            .card
+            .is_some()
+        {
+            true => "Card".to_string(),
+            false => "Unknown".to_string(),
+        };
 
-//-------------------------------------------------------------------------------------------------------------------
+        // Extracting subscription data .
+        let subscription_data = Subscription::retrieve(
+            &client,
+            &"sub_1QAqRtRtqMxXmkr4l4tkiEZC".parse().unwrap(),
+            &["items", "items.data.price.product", "schedule"],
+        )
+        .await
+        .unwrap();
+        // log::info!("subscription data : {:#?}", subscription_data);
+
+        let plan_name = subscription_data
+            .items
+            .data
+            .get(0) // Assuming you want the first item
+            .and_then(|item| item.price.as_ref()) // Get price object
+            .and_then(|price| price.product.as_ref()) // Get product object
+            .and_then(|product| match product {
+                stripe::Expandable::Object(product_obj) => product_obj.name.clone(), // Extract plan name
+                _ => None,
+            })
+            .unwrap_or("Unknown Plan".to_string()); // Default if not found
+
+        let invoice_id = match subscription_data.latest_invoice {
+            Some(stripe::Expandable::Id(invoice)) => invoice.to_string(),
+            _ => "Unknown invoicd id".to_string(),
+        };
+
+        // Extract billing cycle
+        let billing_cycle = subscription_data
+            .items
+            .data
+            .get(0)
+            .and_then(|item| item.price.as_ref())
+            .and_then(|price| price.recurring.as_ref())
+            .map(|recurring| match recurring.interval {
+                stripe::RecurringInterval::Year => "yearly".to_string(),
+                stripe::RecurringInterval::Month => "monthly".to_string(),
+                stripe::RecurringInterval::Week => "weekly".to_string(),
+                stripe::RecurringInterval::Day => "daily".to_string(),
+            })
+            .unwrap_or("Unknown Billing Cycle".to_string());
+
+
+        // Extract plan ID and amount
+        let price_data = subscription_data
+            .items
+            .data
+            .get(0)
+            .and_then(|item| item.price.as_ref());
+
+        let plan_id = price_data
+            .and_then(|price| Some(price.id.to_string())) // Extract plan ID as string
+            .unwrap_or("Unknown Plan ID".to_string());
+
+        // Product ID
+        let product_id = price_data
+            .and_then(|price| price.product.as_ref()) // Get product from price
+            .and_then(|product| match product {
+                stripe::Expandable::Object(product_obj) => Some(product_obj.id.to_string()), // Extract product ID
+                stripe::Expandable::Id(id) => Some(id.to_string()), // If only ID is available
+            })
+            .unwrap_or("Unknown Product ID".to_string());
+
+        let amount = price_data
+            .and_then(|price| price.unit_amount) // Extract the amount
+            .map(|amt| (amt as f64) / 100.0) // Convert to true amount (divide by 100)
+            .unwrap_or(0.00); // Default if not found
+
+        let new_subscription = SubscriptionPlan {
+            id: None,
+            stripe_subscription_id: subscription_data.id.as_str().to_string(),
+            user_id: user_id,
+            stripe_customer_id: customer_id,
+            plan_details: PlanDetails {
+                plan_id: plan_id,
+                product_id: product_id,
+                plan_name: plan_name,
+                billing_cycle: billing_cycle,
+                start_date: timestamp_to_utc(subscription_data.current_period_start),
+                end_date: timestamp_to_utc(subscription_data.current_period_end),
+            },
+            auto_renew: true,
+            refundable: false,
+            status: subscription_data.status.to_string(),
+            cancellation_date: None, // No cancellation yet
+            payment_history: vec![PaymentDetails {
+                invoice_id: invoice_id,
+                payment_method: payment_method,
+                currency: subscription_data.currency.to_string(),
+                amount: amount,
+                payment_date: Utc::now(),
+            }],
+        };
+
+        // log::info!("new subscription data : {:#?}", new_subscription);
+
+        // Get the MongoDB collection
+        let collection = SubscriptionPlan::get_subscription_collection().await;
+
+        // Convert the subscription plan to BSON
+        let new_subscription_bson = mongodb::bson::to_document(&new_subscription).unwrap();
+
+        // Insert the subscription plan into MongoDB
+        let insert_result = collection.insert_one(new_subscription_bson).await.unwrap();
+
+        // Extract the inserted `_id` from MongoDB insert result
+        let subscription_id = insert_result
+            .inserted_id
+            .as_object_id()
+            .expect("Failed to get subscription _id");
+        return Ok(subscription_id);
+    }
+    return Err("Plan verification unsuccessful".to_string());
+}
+
+// Helper function to convert timestamp to DateTime<Utc>
+fn timestamp_to_utc(timestamp: i64) -> DateTime<Utc> {
+    Utc.timestamp_opt(timestamp, 0).unwrap()
+}
+// -------------------------------------------------------------------------------------------------------------------
 // INFO - checkout session data : CheckoutSession {
 //     id: CheckoutSessionId(
 //         "cs_test_a1Owo7ibMsTCOjMWA0kMwUr8jAVqE539zKHPOCt7KtBK5oCb5XgQzW4xh7",
@@ -561,11 +635,7 @@ let subscription_data = Subscription::retrieve(&client, &"sub_1QAqRtRtqMxXmkr4l4
 //     url: None,
 // }
 
-
-
-
-
-
+//----------------------------------------------------------------------------------------------------------------------------------
 
 // INFO - subscription data : Subscription {
 //     id: SubscriptionId(
@@ -714,10 +784,56 @@ let subscription_data = Subscription::retrieve(&client, &"sub_1QAqRtRtqMxXmkr4l4
 //                         ),
 //                         nickname: None,
 //                         product: Some(
-//                             Id(
-//                                 ProductId(
-//                                     "prod_R1odaLLB9vHBxh",
-//                                 ),
+//                             Object(
+//                                 Product {
+//                                     id: ProductId(
+//                                         "prod_R1odaLLB9vHBxh",
+//                                     ),
+//                                     active: Some(
+//                                         true,
+//                                     ),
+//                                     created: Some(
+//                                         1728899775,
+//                                     ),
+//                                     default_price: Some(
+//                                         Id(
+//                                             PriceId(
+//                                                 "price_1Q9l0eRtqMxXmkr4f7i32obw",
+//                                             ),
+//                                         ),
+//                                     ),
+//                                     deleted: false,
+//                                     description: Some(
+//                                         "Thankyou For buying this plan ,Enjoy Our Service",
+//                                     ),
+//                                     features: Some(
+//                                         [],
+//                                     ),
+//                                     images: Some(
+//                                         [],
+//                                     ),
+//                                     livemode: Some(
+//                                         false,
+//                                     ),
+//                                     metadata: Some(
+//                                         {},
+//                                     ),
+//                                     name: Some(
+//                                         "Saas Pro Yearly",
+//                                     ),
+//                                     package_dimensions: None,
+//                                     shippable: None,
+//                                     statement_descriptor: None,
+//                                     tax_code: None,
+//                                     type_: Some(
+//                                         Service,
+//                                     ),
+//                                     unit_label: None,
+//                                     updated: Some(
+//                                         1728976390,
+//                                     ),
+//                                     url: None,
+//                                 },
 //                             ),
 //                         ),
 //                         recurring: Some(

@@ -20,11 +20,12 @@ pub struct User {
     pub google_id: Option<String>, // Google ID for Google login
     pub login_type: String,        // "google" or "email"
 
-    pub subscription_id: Option<ObjectId>, // Plan details
+    pub subscription_id: Option<String>, // Plan details
     pub usage: Usage,                      // User's usage (tries)
 
     pub activity_log: Vec<ActivityLog>, // Activity log of user actions
     pub billing_history: Vec<BillingHistory>, // Billing history for the user
+    pub address: CustomerDetails, // Customer details
 
     pub created_at: DateTime<Utc>, // Account creation timestamp
     pub updated_at: DateTime<Utc>, // Last update timestamp
@@ -53,6 +54,28 @@ pub struct ActivityLog {
 pub struct BillingHistory {
     pub invoice_id: String,     // Invoice number, e.g., "Invoice #1234"
     pub paid_at: DateTime<Utc>, // Payment date and time
+}
+
+// Define the customer details struct
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CustomerDetails {
+    pub address: Option<Address>,     // Customer address
+    pub email: Option<String>,        // Customer email
+    pub name: Option<String>,         // Customer name
+    pub phone: Option<String>,        // Customer phone
+    pub tax_exempt: Option<bool>,     // Tax exemption status
+    pub tax_ids: Option<Vec<String>>, // Tax IDs if applicable
+}
+
+// Define the address struct
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Address {
+    pub city: Option<String>,        // City
+    pub country: Option<String>,     // Country
+    pub line1: Option<String>,       // Address line 1
+    pub line2: Option<String>,       // Address line 2
+    pub postal_code: Option<String>, // Postal code
+    pub state: Option<String>,       // State or province
 }
 
 impl User {
