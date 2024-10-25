@@ -13,7 +13,7 @@ pub struct SubscriptionPlan {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>, // MongoDB ObjectId, auto-generated
     pub stripe_subscription_id: String, // Stripe subscription ID
-    pub user_id: ObjectId,              // User ID linked to the subscription
+    pub user_id: String,              // User ID linked to the subscription
     pub stripe_customer_id: String,     // Stripe customer ID
     pub plan_details: PlanDetails,      // Plan details (now a separate struct)
     pub auto_renew: bool,               // Whether the subscription auto-renews
@@ -30,8 +30,8 @@ pub struct PlanDetails {
     pub product_id: String,
     pub plan_name: String,         // custom plan name
     pub billing_cycle: String,     // Billing cycle, e.g., "monthly" or "yearly"
-    pub start_date: DateTime<Utc>, // Subscription start date
-    pub end_date: DateTime<Utc>,   // Subscription end date
+    pub start_date: String, // Subscription start date
+    pub end_date: String,   // Subscription end date
 }
 
 // Define the payment details struct
@@ -41,7 +41,7 @@ pub struct PaymentDetails {
     pub payment_method: String, // Payment method used, e.g., Stripe, PayPal
     pub currency: String,
     pub amount: f64,         // Payment amount
-    pub payment_date: DateTime<Utc>, // Payment date
+    pub payment_date: String, // Payment date
 }
 
 // Implement methods for accessing the MongoDB collection

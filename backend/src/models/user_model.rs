@@ -25,7 +25,7 @@ pub struct User {
 
     pub activity_log: Vec<ActivityLog>, // Activity log of user actions
     pub billing_history: Vec<BillingHistory>, // Billing history for the user
-    pub address: CustomerDetails, // Customer details
+    pub user_address: UserAddress, // User Address
 
     pub created_at: DateTime<Utc>, // Account creation timestamp
     pub updated_at: DateTime<Utc>, // Last update timestamp
@@ -56,15 +56,13 @@ pub struct BillingHistory {
     pub paid_at: DateTime<Utc>, // Payment date and time
 }
 
-// Define the customer details struct
+// Define the User details struct
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CustomerDetails {
-    pub address: Option<Address>,     // Customer address
-    pub email: Option<String>,        // Customer email
-    pub name: Option<String>,         // Customer name
-    pub phone: Option<String>,        // Customer phone
-    pub tax_exempt: Option<bool>,     // Tax exemption status
-    pub tax_ids: Option<Vec<String>>, // Tax IDs if applicable
+pub struct UserAddress {
+    pub address: Option<Address>,     // User address
+    pub email: Option<String>,        // User email
+    pub name: Option<String>,         // User name
+    pub phone: Option<String>,        // User phone
 }
 
 // Define the address struct

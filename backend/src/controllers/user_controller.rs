@@ -13,7 +13,7 @@
 
 use crate::configration::gett;
 use crate::middleware::auth::Claimss;
-use crate::models::user_model::{Usage, User};
+use crate::models::user_model::User;
 use crate::utils::generate_token::{
     generate_token_and_set_cookie, generate_token_and_unset_cookie,
 };
@@ -137,7 +137,20 @@ pub async fn register_user(Json(payload): Json<RegisterUser>) -> Response {
         "google_id": None::<Bson>, // Not a Google login
         "login_type": "email", // Email login
         "profileImg": None::<Bson>, // Optional field
-        "subscription_plan": None::<Bson>,
+        "subscription_id": None::<Bson>,
+        "user_address":{
+             "address": {
+                 "city": "",        // City
+                 "country": "",     // Country
+                 "line1": "",       // Address line 1
+                 "line2": "",       // Address line 2
+                 "postal_code": "", // Postal code
+                 "state": "",       // State or province
+             },
+             "email": "",        // User email
+             "name": "",         // User name
+             "phone": "",        // User phone
+        },
         "usage": {
             "tries_used": 0, // Start with 0 tries used
             "max_tries": 10,  // Basic plan allows 10 tries

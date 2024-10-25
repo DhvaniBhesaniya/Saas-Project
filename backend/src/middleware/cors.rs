@@ -2,7 +2,7 @@ use axum::http::{HeaderValue, Method};
 use tower_http::cors::{Any, CorsLayer};
 
 pub fn cors_layer() -> CorsLayer {
-    log::info!("inside cors layer");
+    log::info!("cors layer builted.");
 
     CorsLayer::new()
         // Only allow the origin you want (localhost:5500)

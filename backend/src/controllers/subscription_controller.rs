@@ -9,20 +9,16 @@ use axum::{
 };
 
 use bson::Bson;
-use chrono::{DateTime, TimeZone, Utc};
-use mongodb::{
-    bson::{self, doc, oid::ObjectId, Document},
-    change_stream::session,
-};
+// use chrono::{DateTime, FixedOffset, TimeZone, Utc};
+use mongodb::bson::{self, doc, oid::ObjectId, DateTime as BsonDateTime, Document};
 // use mongodb::options::{FindOneAndUpdateOptions, ReturnDocument};
 // use mongodb::Collection;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use stripe::{
     CheckoutSession, CheckoutSessionPaymentStatus, CheckoutSessionStatus, Client,
     CreateCheckoutSession, CreateCheckoutSessionLineItems, CreateCheckoutSessionPaymentMethodTypes,
-    CustomerId, IdOrCreate, ListCheckoutSessions, ListCheckoutSessionsCustomerDetails, ListPrices,
-    ListSubscriptionItems, ListSubscriptions, Price, Subscription, SubscriptionId,
+    ListPrices, Price, Subscription,
 };
 
 #[derive(Debug, Deserialize)]
@@ -32,6 +28,26 @@ pub struct PlaceOrderRequest {
 #[derive(Debug, Deserialize)]
 pub struct VerifyOrderRequest {
     session_id: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum PlanType {
+    SaasEnterpriceYearly { value: i32 },
+    SaasProYearly { value: i32 },
+    SaasEnterpriceMonthly { value: i32 },
+    SaasProMonthly { value: i32 },
+}
+
+impl PlanType {
+    pub fn get_value(s: &str) -> Option<Self> {
+        match s {
+            "Saas Enterprice Yearly" => Some(PlanType::SaasEnterpriceYearly { value: 1000 }),
+            "Saas Pro Yearly" => Some(PlanType::SaasProYearly { value: 500 }),
+            "Saas Enterprice Monthly" => Some(PlanType::SaasEnterpriceMonthly { value: 500 }),
+            "Saas Pro Monthly" => Some(PlanType::SaasProMonthly { value: 250 }),
+            _ => None,
+        }
+    }
 }
 
 pub async fn buy_plan(
@@ -107,7 +123,7 @@ pub async fn buy_plan(
     // Prepare the line item for the checkout session
     let line_item = CreateCheckoutSessionLineItems {
         price: Some(req.price_id.to_string()),
-        quantity: Some(1), // Assuming the quantity is 1 for buying a plan
+        quantity: Some(1), // The quantity is 1 for buying a plan
         ..Default::default()
     };
 
@@ -219,10 +235,31 @@ pub async fn verify_plan(
         get_checkout_session_data_and_update(&client, session_id, user_id, None).await;
 
     match checkout_session {
-        Ok(id) => {
-            let mut update_fields = Document::new();
-            update_fields.insert("subscription_id", id.to_hex());
+        Ok(data) => {
+            // Initialize variables for extracted values
+            let mut sub_id: Option<ObjectId> = None;
+            let mut max_usage: Option<i32> = None;
 
+            // Extract sub_id as ObjectId
+            if let Some(sub_id_value) = data.get("sub_id").and_then(|v| v.get("$oid")) {
+                if let Some(sub_id_str) = sub_id_value.as_str() {
+                    sub_id = ObjectId::parse_str(sub_id_str).ok();
+                }
+            }
+
+            // Extract max_usage as i32
+            if let Some(max_usage_value) = data.get("max_usage") {
+                max_usage = max_usage_value.as_i64().map(|v| v as i32);
+            }
+            let mut update_fields = Document::new();
+            // Insert into update fields if successfully extracted
+            if let Some(sub_id) = sub_id {
+                update_fields.insert("subscription_id", sub_id.to_hex());
+            }
+            if let Some(max_usage) = max_usage {
+                update_fields.insert("usage.tries_used", 0);
+                update_fields.insert("usage.max_tries", max_usage);
+            }
             // Update the user document in MongoDB
             if !update_fields.is_empty() {
                 let update_doc = doc! { "$set": update_fields };
@@ -258,7 +295,7 @@ pub async fn get_checkout_session_data_and_update(
     session_id: String,
     user_id: ObjectId,
     _user_email: Option<String>,
-) -> Result<ObjectId, String> {
+) -> Result<Value, String> {
     // method 1:  gett session list and find it
 
     // // Example of using ListProducts with specific parameters
@@ -325,10 +362,15 @@ pub async fn get_checkout_session_data_and_update(
             false => "Unknown".to_string(),
         };
 
+        let subscription_id = match checkout_session_data.subscription.unwrap(){
+            stripe::Expandable::Id(sub_id) => sub_id.to_string(),
+            _ => "Unknown".to_string(),
+        };
+
         // Extracting subscription data .
         let subscription_data = Subscription::retrieve(
             &client,
-            &"sub_1QAqRtRtqMxXmkr4l4tkiEZC".parse().unwrap(),
+            &subscription_id.parse().unwrap(),
             &["items", "items.data.price.product", "schedule"],
         )
         .await
@@ -367,7 +409,6 @@ pub async fn get_checkout_session_data_and_update(
             })
             .unwrap_or("Unknown Billing Cycle".to_string());
 
-
         // Extract plan ID and amount
         let price_data = subscription_data
             .items
@@ -396,15 +437,15 @@ pub async fn get_checkout_session_data_and_update(
         let new_subscription = SubscriptionPlan {
             id: None,
             stripe_subscription_id: subscription_data.id.as_str().to_string(),
-            user_id: user_id,
+            user_id: user_id.to_hex(),
             stripe_customer_id: customer_id,
             plan_details: PlanDetails {
                 plan_id: plan_id,
                 product_id: product_id,
-                plan_name: plan_name,
+                plan_name: plan_name.clone(),
                 billing_cycle: billing_cycle,
-                start_date: timestamp_to_utc(subscription_data.current_period_start),
-                end_date: timestamp_to_utc(subscription_data.current_period_end),
+                start_date: unix_to_bsontime(subscription_data.current_period_start),
+                end_date: unix_to_bsontime(subscription_data.current_period_end),
             },
             auto_renew: true,
             refundable: false,
@@ -415,11 +456,14 @@ pub async fn get_checkout_session_data_and_update(
                 payment_method: payment_method,
                 currency: subscription_data.currency.to_string(),
                 amount: amount,
-                payment_date: Utc::now(),
+                payment_date: unix_to_bsontime(checkout_session_data.created),
             }],
         };
 
         // log::info!("new subscription data : {:#?}", new_subscription);
+
+        // let invoice_data = Invoice::retrieve(&client,&invoice_id.parse().unwrap(),&[]).await.unwrap();
+        // log::info!("invoice data : {:#?}",invoice_data);
 
         // Get the MongoDB collection
         let collection = SubscriptionPlan::get_subscription_collection().await;
@@ -435,503 +479,41 @@ pub async fn get_checkout_session_data_and_update(
             .inserted_id
             .as_object_id()
             .expect("Failed to get subscription _id");
-        return Ok(subscription_id);
+
+        let plan_max_usage = PlanType::get_value(&plan_name).unwrap();
+        let max_usage = match plan_max_usage {
+            PlanType::SaasProYearly { value } => value,
+            PlanType::SaasEnterpriceYearly { value } => value,
+            PlanType::SaasProMonthly { value } => value,
+            PlanType::SaasEnterpriceMonthly { value } => value
+        };
+        return Ok(json!({"sub_id":subscription_id,"max_usage":max_usage}));
     }
     return Err("Plan verification unsuccessful".to_string());
 }
 
-// Helper function to convert timestamp to DateTime<Utc>
-fn timestamp_to_utc(timestamp: i64) -> DateTime<Utc> {
-    Utc.timestamp_opt(timestamp, 0).unwrap()
+// Helper function to convert Unix to DateTime<Utc>
+// fn timestamp_to_utc(timestamp: i64) -> DateTime<Utc> {
+//     Utc.timestamp_opt(timestamp, 0).unwrap() //2024-10-17T09:56:53Z"  Utc format
+// }
+// Helper function to convert Unix (1729159014) to DateTime<Utc>
+fn unix_to_bsontime(timestamp: i64) -> String {
+    // println!("Input timestamp: {}", timestamp);
+
+    let bson_dt = BsonDateTime::from_millis(timestamp * 1000);
+    // println!("BsonDateTime raw: {:?}", bson_dt);
+    return bson_dt.to_string();
+
+    // let utc_time = Utc.timestamp_opt(timestamp, 0).unwrap();
+    // println!("UTC Time: {:?}", utc_time);
+
+    // let formatted_string = utc_time
+    //     .format("%Y-%m-%d %H:%M:%S.000 +00:00:00")
+    //     .to_string();
+
+    //     // Create an offset for UTC+5:30 (India)
+    //     let india_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
+    //     let local_time = utc_time.with_timezone(&india_offset);
+    //     let formatted_string = local_time.format("%Y-%m-%d %H:%M:%S.000 %z").to_string();
+    //     println!(" Indian time:  Formatted string: {}", formatted_string);
 }
-// -------------------------------------------------------------------------------------------------------------------
-// INFO - checkout session data : CheckoutSession {
-//     id: CheckoutSessionId(
-//         "cs_test_a1Owo7ibMsTCOjMWA0kMwUr8jAVqE539zKHPOCt7KtBK5oCb5XgQzW4xh7",
-//     ),
-//     after_expiration: None,
-//     allow_promotion_codes: None,
-//     amount_subtotal: Some(
-//         29999,
-//     ),
-//     amount_total: Some(
-//         29999,
-//     ),
-//     automatic_tax: PaymentPagesCheckoutSessionAutomaticTax {
-//         enabled: false,
-//         liability: None,
-//         status: None,
-//     },
-//     billing_address_collection: None,
-//     cancel_url: Some(
-//         "http://localhost:5170/verify?success=false&session_id={CHECKOUT_SESSION_ID}",
-//     ),
-//     client_reference_id: None,
-//     client_secret: None,
-//     consent: None,
-//     consent_collection: None,
-//     created: 1729158984,
-//     currency: Some(
-//         USD,
-//     ),
-//     currency_conversion: None,
-//     custom_fields: [],
-//     custom_text: PaymentPagesCheckoutSessionCustomText {
-//         after_submit: None,
-//         shipping_address: None,
-//         submit: None,
-//         terms_of_service_acceptance: None,
-//     },
-//     customer: Some(
-//         Id(
-//             CustomerId(
-//                 "cus_R2wKbdOIQC2vnI",
-//             ),
-//         ),
-//     ),
-//     customer_creation: Some(
-//         Always,
-//     ),
-//     customer_details: Some(
-//         PaymentPagesCheckoutSessionCustomerDetails {
-//             address: Some(
-//                 Address {
-//                     city: None,
-//                     country: Some(
-//                         "IN",
-//                     ),
-//                     line1: None,
-//                     line2: None,
-//                     postal_code: None,
-//                     state: None,
-//                 },
-//             ),
-//             email: Some(
-//                 "user0@gmail.com",
-//             ),
-//             name: Some(
-//                 "User0",
-//             ),
-//             phone: None,
-//             tax_exempt: Some(
-//                 None,
-//             ),
-//             tax_ids: Some(
-//                 [],
-//             ),
-//         },
-//     ),
-//     customer_email: Some(
-//         "user0@gmail.com",
-//     ),
-//     expires_at: 1729245384,
-//     invoice: Some(
-//         Id(
-//             InvoiceId(
-//                 "in_1QAqRtRtqMxXmkr47dsB3yCn",
-//             ),
-//         ),
-//     ),
-//     invoice_creation: None,
-//     line_items: None,
-//     livemode: false,
-//     locale: None,
-//     metadata: Some(
-//         {},
-//     ),
-//     mode: Subscription,
-//     payment_intent: None,
-//     payment_link: None,
-//     payment_method_collection: Some(
-//         Always,
-//     ),
-//     payment_method_configuration_details: None,
-//     payment_method_options: Some(
-//         CheckoutSessionPaymentMethodOptions {
-//             acss_debit: None,
-//             affirm: None,
-//             afterpay_clearpay: None,
-//             alipay: None,
-//             au_becs_debit: None,
-//             bacs_debit: None,
-//             bancontact: None,
-//             boleto: None,
-//             card: Some(
-//                 CheckoutCardPaymentMethodOptions {
-//                     installments: None,
-//                     setup_future_usage: None,
-//                     statement_descriptor_suffix_kana: None,
-//                     statement_descriptor_suffix_kanji: None,
-//                 },
-//             ),
-//             cashapp: None,
-//             customer_balance: None,
-//             eps: None,
-//             fpx: None,
-//             giropay: None,
-//             grabpay: None,
-//             ideal: None,
-//             klarna: None,
-//             konbini: None,
-//             link: None,
-//             oxxo: None,
-//             p24: None,
-//             paynow: None,
-//             paypal: None,
-//             pix: None,
-//             revolut_pay: None,
-//             sepa_debit: None,
-//             sofort: None,
-//             swish: None,
-//             us_bank_account: None,
-//         },
-//     ),
-//     payment_method_types: [
-//         "card",
-//         "paypal",
-//     ],
-//     payment_status: Paid,
-//     phone_number_collection: Some(
-//         PaymentPagesCheckoutSessionPhoneNumberCollection {
-//             enabled: false,
-//         },
-//     ),
-//     recovered_from: None,
-//     redirect_on_completion: None,
-//     return_url: None,
-//     setup_intent: None,
-//     shipping_address_collection: None,
-//     shipping_cost: None,
-//     shipping_details: None,
-//     shipping_options: [],
-//     status: Some(
-//         Complete,
-//     ),
-//     submit_type: None,
-//     subscription: Some(
-//         Id(
-//             SubscriptionId(
-//                 "sub_1QAqRtRtqMxXmkr4l4tkiEZC",
-//             ),
-//         ),
-//     ),
-//     success_url: Some(
-//         "http://localhost:5170/verify?success=true&session_id={CHECKOUT_SESSION_ID}",
-//     ),
-//     tax_id_collection: None,
-//     total_details: Some(
-//         PaymentPagesCheckoutSessionTotalDetails {
-//             amount_discount: 0,
-//             amount_shipping: Some(
-//                 0,
-//             ),
-//             amount_tax: 0,
-//             breakdown: None,
-//         },
-//     ),
-//     ui_mode: Some(
-//         Hosted,
-//     ),
-//     url: None,
-// }
-
-//----------------------------------------------------------------------------------------------------------------------------------
-
-// INFO - subscription data : Subscription {
-//     id: SubscriptionId(
-//         "sub_1QAqRtRtqMxXmkr4l4tkiEZC",
-//     ),
-//     application: None,
-//     application_fee_percent: None,
-//     automatic_tax: SubscriptionAutomaticTax {
-//         enabled: false,
-//         liability: None,
-//     },
-//     billing_cycle_anchor: 1729159013,
-//     billing_cycle_anchor_config: None,
-//     billing_thresholds: None,
-//     cancel_at: None,
-//     cancel_at_period_end: false,
-//     canceled_at: None,
-//     cancellation_details: Some(
-//         CancellationDetails {
-//             comment: None,
-//             feedback: None,
-//             reason: None,
-//         },
-//     ),
-//     collection_method: Some(
-//         ChargeAutomatically,
-//     ),
-//     created: 1729159013,
-//     currency: USD,
-//     current_period_end: 1760695013,
-//     current_period_start: 1729159013,
-//     customer: Id(
-//         CustomerId(
-//             "cus_R2wKbdOIQC2vnI",
-//         ),
-//     ),
-//     days_until_due: None,
-//     default_payment_method: Some(
-//         Id(
-//             PaymentMethodId(
-//                 "pm_1QAqRsRtqMxXmkr4RBUNJe2B",
-//             ),
-//         ),
-//     ),
-//     default_source: None,
-//     default_tax_rates: Some(
-//         [],
-//     ),
-//     description: None,
-//     discount: None,
-//     ended_at: None,
-//     items: List {
-//         data: [
-//             SubscriptionItem {
-//                 id: SubscriptionItemId(
-//                     "si_R2wKDNoSXcv8zA",
-//                 ),
-//                 billing_thresholds: None,
-//                 created: Some(
-//                     1729159014,
-//                 ),
-//                 deleted: false,
-//                 metadata: Some(
-//                     {},
-//                 ),
-//                 plan: Some(
-//                     Plan {
-//                         id: PlanId(
-//                             "price_1Q9l0eRtqMxXmkr4f7i32obw",
-//                         ),
-//                         active: Some(
-//                             true,
-//                         ),
-//                         aggregate_usage: None,
-//                         amount: Some(
-//                             29999,
-//                         ),
-//                         amount_decimal: Some(
-//                             "29999",
-//                         ),
-//                         billing_scheme: Some(
-//                             PerUnit,
-//                         ),
-//                         created: Some(
-//                             1728899776,
-//                         ),
-//                         currency: Some(
-//                             USD,
-//                         ),
-//                         deleted: false,
-//                         interval: Some(
-//                             Year,
-//                         ),
-//                         interval_count: Some(
-//                             1,
-//                         ),
-//                         livemode: Some(
-//                             false,
-//                         ),
-//                         metadata: Some(
-//                             {},
-//                         ),
-//                         nickname: None,
-//                         product: Some(
-//                             Id(
-//                                 ProductId(
-//                                     "prod_R1odaLLB9vHBxh",
-//                                 ),
-//                             ),
-//                         ),
-//                         tiers: None,
-//                         tiers_mode: None,
-//                         transform_usage: None,
-//                         trial_period_days: None,
-//                         usage_type: Some(
-//                             Licensed,
-//                         ),
-//                     },
-//                 ),
-//                 price: Some(
-//                     Price {
-//                         id: PriceId(
-//                             "price_1Q9l0eRtqMxXmkr4f7i32obw",
-//                         ),
-//                         active: Some(
-//                             true,
-//                         ),
-//                         billing_scheme: Some(
-//                             PerUnit,
-//                         ),
-//                         created: Some(
-//                             1728899776,
-//                         ),
-//                         currency: Some(
-//                             USD,
-//                         ),
-//                         currency_options: None,
-//                         custom_unit_amount: None,
-//                         deleted: false,
-//                         livemode: Some(
-//                             false,
-//                         ),
-//                         lookup_key: None,
-//                         metadata: Some(
-//                             {},
-//                         ),
-//                         nickname: None,
-//                         product: Some(
-//                             Object(
-//                                 Product {
-//                                     id: ProductId(
-//                                         "prod_R1odaLLB9vHBxh",
-//                                     ),
-//                                     active: Some(
-//                                         true,
-//                                     ),
-//                                     created: Some(
-//                                         1728899775,
-//                                     ),
-//                                     default_price: Some(
-//                                         Id(
-//                                             PriceId(
-//                                                 "price_1Q9l0eRtqMxXmkr4f7i32obw",
-//                                             ),
-//                                         ),
-//                                     ),
-//                                     deleted: false,
-//                                     description: Some(
-//                                         "Thankyou For buying this plan ,Enjoy Our Service",
-//                                     ),
-//                                     features: Some(
-//                                         [],
-//                                     ),
-//                                     images: Some(
-//                                         [],
-//                                     ),
-//                                     livemode: Some(
-//                                         false,
-//                                     ),
-//                                     metadata: Some(
-//                                         {},
-//                                     ),
-//                                     name: Some(
-//                                         "Saas Pro Yearly",
-//                                     ),
-//                                     package_dimensions: None,
-//                                     shippable: None,
-//                                     statement_descriptor: None,
-//                                     tax_code: None,
-//                                     type_: Some(
-//                                         Service,
-//                                     ),
-//                                     unit_label: None,
-//                                     updated: Some(
-//                                         1728976390,
-//                                     ),
-//                                     url: None,
-//                                 },
-//                             ),
-//                         ),
-//                         recurring: Some(
-//                             Recurring {
-//                                 aggregate_usage: None,
-//                                 interval: Year,
-//                                 interval_count: 1,
-//                                 trial_period_days: None,
-//                                 usage_type: Licensed,
-//                             },
-//                         ),
-//                         tax_behavior: Some(
-//                             Unspecified,
-//                         ),
-//                         tiers: None,
-//                         tiers_mode: None,
-//                         transform_quantity: None,
-//                         type_: Some(
-//                             Recurring,
-//                         ),
-//                         unit_amount: Some(
-//                             29999,
-//                         ),
-//                         unit_amount_decimal: Some(
-//                             "29999",
-//                         ),
-//                     },
-//                 ),
-//                 quantity: Some(
-//                     1,
-//                 ),
-//                 subscription: Some(
-//                     "sub_1QAqRtRtqMxXmkr4l4tkiEZC",
-//                 ),
-//                 tax_rates: Some(
-//                     [],
-//                 ),
-//             },
-//         ],
-//         has_more: false,
-//         total_count: Some(
-//             1,
-//         ),
-//         url: "/v1/subscription_items?subscription=sub_1QAqRtRtqMxXmkr4l4tkiEZC",
-//     },
-//     latest_invoice: Some(
-//         Id(
-//             InvoiceId(
-//                 "in_1QAqRtRtqMxXmkr47dsB3yCn",
-//             ),
-//         ),
-//     ),
-//     livemode: false,
-//     metadata: {},
-//     next_pending_invoice_item_invoice: None,
-//     on_behalf_of: None,
-//     pause_collection: None,
-//     payment_settings: Some(
-//         SubscriptionsResourcePaymentSettings {
-//             payment_method_options: Some(
-//                 SubscriptionsResourcePaymentMethodOptions {
-//                     acss_debit: None,
-//                     bancontact: None,
-//                     card: Some(
-//                         SubscriptionPaymentMethodOptionsCard {
-//                             mandate_options: None,
-//                             network: None,
-//                             request_three_d_secure: Some(
-//                                 Automatic,
-//                             ),
-//                         },
-//                     ),
-//                     customer_balance: None,
-//                     konbini: None,
-//                     us_bank_account: None,
-//                 },
-//             ),
-//             payment_method_types: None,
-//             save_default_payment_method: Some(
-//                 Off,
-//             ),
-//         },
-//     ),
-//     pending_invoice_item_interval: None,
-//     pending_setup_intent: None,
-//     pending_update: None,
-//     schedule: None,
-//     start_date: 1729159013,
-//     status: Active,
-//     test_clock: None,
-//     transfer_data: None,
-//     trial_end: None,
-//     trial_settings: Some(
-//         SubscriptionsTrialsResourceTrialSettings {
-//             end_behavior: SubscriptionsTrialsResourceEndBehavior {
-//                 missing_payment_method: CreateInvoice,
-//             },
-//         },
-//     ),
-//     trial_start: None,
-// }
