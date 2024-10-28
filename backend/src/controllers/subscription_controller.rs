@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 use stripe::{
     CheckoutSession, CheckoutSessionPaymentStatus, CheckoutSessionStatus, Client,
     CreateCheckoutSession, CreateCheckoutSessionLineItems, CreateCheckoutSessionPaymentMethodTypes,
-    ListPrices, Price, Subscription,
+    Invoice, ListPrices, Price, Subscription,
 };
 
 #[derive(Debug, Deserialize)]
@@ -42,7 +42,7 @@ impl PlanType {
     pub fn get_value(s: &str) -> Option<Self> {
         match s {
             "Saas Enterprice Yearly" => Some(PlanType::SaasEnterpriceYearly { value: 1000 }),
-            "Saas Pro Yearly" => Some(PlanType::SaasProYearly { value: 500 }),
+            "Saas Pro Yearly" => Some(PlanType::SaasProYearly { value: 700 }),
             "Saas Enterprice Monthly" => Some(PlanType::SaasEnterpriceMonthly { value: 500 }),
             "Saas Pro Monthly" => Some(PlanType::SaasProMonthly { value: 250 }),
             _ => None,
@@ -362,7 +362,7 @@ pub async fn get_checkout_session_data_and_update(
             false => "Unknown".to_string(),
         };
 
-        let subscription_id = match checkout_session_data.subscription.unwrap(){
+        let subscription_id = match checkout_session_data.subscription.unwrap() {
             stripe::Expandable::Id(sub_id) => sub_id.to_string(),
             _ => "Unknown".to_string(),
         };
@@ -434,6 +434,16 @@ pub async fn get_checkout_session_data_and_update(
             .map(|amt| (amt as f64) / 100.0) // Convert to true amount (divide by 100)
             .unwrap_or(0.00); // Default if not found
 
+        // get invoice pdf
+        let invoice_data = Invoice::retrieve(&client, &invoice_id.parse().unwrap(), &[])
+            .await
+            .unwrap();
+        // log::info!("invoice data : {:#?}",invoice_data);
+        let invoice_pdf = match invoice_data.hosted_invoice_url {
+            Some(url) => url.to_string(),
+            None => "Unknown".to_string(),
+        };
+
         let new_subscription = SubscriptionPlan {
             id: None,
             stripe_subscription_id: subscription_data.id.as_str().to_string(),
@@ -453,6 +463,7 @@ pub async fn get_checkout_session_data_and_update(
             cancellation_date: None, // No cancellation yet
             payment_history: vec![PaymentDetails {
                 invoice_id: invoice_id,
+                invoice_pdf: invoice_pdf,
                 payment_method: payment_method,
                 currency: subscription_data.currency.to_string(),
                 amount: amount,
@@ -461,9 +472,6 @@ pub async fn get_checkout_session_data_and_update(
         };
 
         // log::info!("new subscription data : {:#?}", new_subscription);
-
-        // let invoice_data = Invoice::retrieve(&client,&invoice_id.parse().unwrap(),&[]).await.unwrap();
-        // log::info!("invoice data : {:#?}",invoice_data);
 
         // Get the MongoDB collection
         let collection = SubscriptionPlan::get_subscription_collection().await;
@@ -485,7 +493,7 @@ pub async fn get_checkout_session_data_and_update(
             PlanType::SaasProYearly { value } => value,
             PlanType::SaasEnterpriceYearly { value } => value,
             PlanType::SaasProMonthly { value } => value,
-            PlanType::SaasEnterpriceMonthly { value } => value
+            PlanType::SaasEnterpriceMonthly { value } => value,
         };
         return Ok(json!({"sub_id":subscription_id,"max_usage":max_usage}));
     }

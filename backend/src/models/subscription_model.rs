@@ -38,6 +38,7 @@ pub struct PlanDetails {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PaymentDetails {
     pub invoice_id: String,     // Invoice number, e.g., "Invoice #1234"
+    pub invoice_pdf: String,
     pub payment_method: String, // Payment method used, e.g., Stripe, PayPal
     pub currency: String,
     pub amount: f64,         // Payment amount

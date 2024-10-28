@@ -1,5 +1,5 @@
 use crate::configration::gett;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
 use mongodb::bson::oid::ObjectId;
 use mongodb::bson::Document;
 use mongodb::Collection;
@@ -46,7 +46,7 @@ pub struct Usage {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ActivityLog {
     pub event: String, // Description of the activity, e.g., "Login from Chrome on Windows"
-    pub timestamp: DateTime<Utc>, // Timestamp of the activity
+    pub timestamp: String, // Timestamp of the activity
 }
 
 // Define the billing history model
@@ -82,5 +82,36 @@ impl User {
         let client_options = ClientOptions::parse(url).await.unwrap();
         let client = Client::with_options(client_options).unwrap();
         client.database("saas-data").collection::<Document>("users")
+    }
+
+    pub async fn current_log_time() -> String {
+        // utc now
+        let utc_time = Utc::now();
+
+        // Create an offset for UTC+5:30 (India)
+        let india_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
+        let local_time = utc_time.with_timezone(&india_offset);
+
+        // Format the local time with AM/PM
+        let formatted_string = local_time.format("%Y-%m-%d %I:%M:%S %p").to_string();
+        formatted_string
+    }
+
+    pub async fn create_activity_log(event_type: i32) -> ActivityLog {
+        // Determine the event string based on the input number
+        let event_description = match event_type {
+            1 => "Logged In",
+            2 => "Logged Out",
+            _ => "Unknown Event",
+        };
+
+        // Get the current timestamp
+        let timestamp = Self::current_log_time().await;
+
+        // Construct and return the ActivityLog struct
+        ActivityLog {
+            event: event_description.to_string(),
+            timestamp,
+        }
     }
 }

@@ -1,4 +1,5 @@
 use axum::{routing::get, Router};
+// use chrono::{FixedOffset, TimeZone, Utc};
 use middleware::cors::cors_layer;
 use routes::genai_routes::create_genai_routes;
 use routes::subscription_routes::create_subscription_routes;
@@ -52,12 +53,16 @@ async fn handler() -> &'static str {
 
 // If you need both BsonDateTime and the formatted string:  1729159014
 // async fn timestamp_to_bson_with_string() {
-//     println!("Input timestamp: {}", 1727675860 as i64);
+//     // println!("Input timestamp: {}", 1727675860 as i64);
 
-//     let bson_dt = BsonDateTime::from_millis(1727675860 as i64 * 1000);
-//     println!("BsonDateTime raw: {:?}", bson_dt);
+//     // let bson_dt = BsonDateTime::from_millis(1727675860 as i64 * 1000);
+//     // println!("BsonDateTime raw: {:?}", bson_dt);
 
-//     let utc_time = Utc.timestamp_opt(1727675860 as i64, 0).unwrap();
+//     // let utc_time = Utc.timestamp_opt(1727675860 as i64, 0).unwrap();
+//     // println!("UTC Time: {:?}", utc_time);
+
+//     // utc now
+//     let utc_time = Utc::now();
 //     println!("UTC Time: {:?}", utc_time);
 
 //     // let formatted_string = utc_time
@@ -67,8 +72,10 @@ async fn handler() -> &'static str {
 //     // Create an offset for UTC+5:30 (India)
 //     let india_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
 //     let local_time = utc_time.with_timezone(&india_offset);
-//     let formatted_string = local_time.format("%Y-%m-%d %H:%M:%S.000 %z").to_string();
-//     println!(" Indian time:  Formatted string: {}", formatted_string);
+
+//     // Format the local time with AM/PM
+//     let formatted_string = local_time.format("%Y-%m-%d %I:%M:%S %p").to_string();
+//     println!("Indian time: Formatted string: {}", formatted_string);
 // }
 
 // output:

@@ -13,7 +13,8 @@
 
 use crate::configration::gett;
 use crate::middleware::auth::Claimss;
-use crate::models::user_model::User;
+use crate::models::subscription_model::SubscriptionPlan;
+use crate::models::user_model::{ActivityLog, User};
 use crate::utils::generate_token::{
     generate_token_and_set_cookie, generate_token_and_unset_cookie,
 };
@@ -26,6 +27,7 @@ use axum::{
 };
 use bcrypt::{hash, verify, DEFAULT_COST};
 use bson::Document;
+use chrono::{FixedOffset, Utc};
 use regex::Regex;
 // use chrono::{Duration, Utc};
 
@@ -69,6 +71,7 @@ pub struct UpdateUserData {
     #[serde(rename = "profileImg")]
     pub profile_img: Option<String>,
     pub tries_used: Option<i32>,
+    pub activity_log_num: Option<i32>,
 }
 
 // #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -302,7 +305,32 @@ pub async fn get_user_data(Extension(claims): Extension<Claimss>) -> impl IntoRe
             // Remove the "password" field from the user document
             user_doc.remove("password");
 
-            // Return the user data
+            // Retrieve the subscription_id and convert to ObjectId
+            if let Some(subscription_id) = user_doc
+                .get_str("subscription_id")
+                .ok()
+                .and_then(|s| ObjectId::parse_str(s).ok())
+            {
+                let subscription_collection = SubscriptionPlan::get_subscription_collection().await;
+                if let Ok(Some(mut subscription_doc)) = subscription_collection
+                    .find_one(doc! { "_id": subscription_id })
+                    .await
+                {
+                    if let Some(id) = subscription_doc.remove("_id") {
+                        if let Some(object_id) = id.as_object_id() {
+                            subscription_doc.insert("_id", object_id.to_string());
+                        }
+                    }
+                    user_doc.insert("subscription_data", subscription_doc);
+                } else {
+                    return (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({ "success": false, "message": "Subscription not found" })),
+                    );
+                }
+            }
+
+            // Return the user data with subscription details
             (
                 StatusCode::OK,
                 Json(json!({ "success": true, "data": user_doc })),
@@ -441,6 +469,35 @@ pub async fn update_user_data(
             }
         }
     }
+
+    // Handle activity log update
+    if let Some(act_num) = form.activity_log_num {
+        let new_act_log = User::create_activity_log(act_num).await;
+
+        // Fetch the existing activity_log and prepend the new log entry
+        let mut updated_activity_log = match user_doc.get_array("activity_log") {
+            Ok(activity_log) => {
+                // Convert BSON array to Vec<ActivityLog> if it exists
+                activity_log
+                    .iter()
+                    .filter_map(|doc| bson::from_bson::<ActivityLog>(doc.clone()).ok())
+                    .collect::<Vec<ActivityLog>>()
+            }
+            Err(_) => vec![], // If no activity log exists, initialize with an empty vector
+        };
+
+        // Insert the new activity log at the beginning
+        updated_activity_log.insert(0, new_act_log);
+
+        // Convert updated_activity_log back to BSON and insert into update fields
+        let bson_activity_log = updated_activity_log
+            .iter()
+            .map(|log| bson::to_bson(log))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_default();
+        update_fields.insert("activity_log", bson_activity_log);
+    }
+
     // Update the user document in MongoDB
     if !update_fields.is_empty() {
         let update_doc = doc! { "$set": update_fields };
@@ -553,6 +610,7 @@ pub async fn destroy_profile_image(profile_img_url: &str) -> Result<String, Stri
 
     upload_result
 }
+
 // destory the image .
 
 // pub async fn destroy_profile_image_curl(profile_img_url: &str) -> Result<String, String> {
